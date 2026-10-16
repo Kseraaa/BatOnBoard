@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+  - packages/games/*
+  - e2e
+
+onlyBuiltDependencies:
+  - esbuild

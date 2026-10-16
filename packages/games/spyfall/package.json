@@ -1,0 +1,14 @@
+{
+  "name": "@batonboard/spyfall",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./rules": "./rules/index.ts",
+    "./data": "./data/index.ts",
+    "./client": "./client/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

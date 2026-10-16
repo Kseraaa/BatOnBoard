@@ -66,20 +66,27 @@ export interface Rng {
   shuffle<T>(items: T[]): T[];
 }
 
+export interface ActionContext {
+  hostId: PlayerId;               // host ปัจจุบันของห้อง (ห้องเป็นคนส่งให้)
+}
+
 export interface GameDefinition<State, Action, View, Options = unknown> {
   id: string;                     // 'spyfall'
   minPlayers: number;
   maxPlayers: number;
   actionSchema: ZodType<Action>;  // ใช้ตรวจ payload จาก client
-  setup(players: PlayerId[], options: Options, rng: Rng): State;
-  validate(state: State, action: Action, by: PlayerId): string | null; // ข้อความ error หรือ null
-  apply(state: State, action: Action, by: PlayerId, now: number): State;
+  setup(players: PlayerId[], options: Options, rng: Rng, now: number): State;
+  validate(state: State, action: Action, by: PlayerId, ctx: ActionContext): string | null; // ข้อความ error หรือ null
+  apply(state: State, action: Action, by: PlayerId, now: number, rng: Rng): State;
   playerView(state: State, viewer: PlayerId): View;  // ตัดข้อมูลลับออก
   nextDeadline?(state: State): number | null;        // เวลาที่ server ต้องปลุกเกม
   onDeadline?(state: State, now: number): State;     // เช่น หมดเวลาถาม
+  onPlayerLeave?(state: State, player: PlayerId, now: number): State; // ถูกเตะ/ออกกลางเกม
   isOver(state: State): boolean;
 }
 ```
+
+> `setup` รับ `now` เพราะต้องตั้ง `deadline` ของรอบแรก และ `apply` รับ `rng` เพราะ `NEXT_ROUND` ต้องสุ่มใหม่ (ดู "การตัดสินใจเชิงออกแบบ")
 
 ### Action pipeline (server)
 
@@ -110,7 +117,7 @@ socket 'game:action' → actionSchema.parse → validate → apply
 ### State และ Action
 
 ```ts
-type Phase = 'lobby' | 'questioning' | 'voting' | 'final-vote' | 'reveal';
+type Phase = 'questioning' | 'voting' | 'final-vote' | 'reveal'; // ล็อบบี้เป็นของห้อง ไม่ใช่ของเกม
 
 interface SpyfallState {
   phase: Phase;
@@ -121,18 +128,25 @@ interface SpyfallState {
   firstAsker: PlayerId;
   deadline: number | null;              // เวลาหมดรอบ (ms epoch)
   pausedRemaining: number | null;       // เวลาที่เหลือตอนหยุดเพื่อโหวต
-  usedAccusation: PlayerId[];           // คนที่ใช้สิทธิ์กล่าวหาแล้ว
-  vote: { accuser: PlayerId; accused: PlayerId; ballots: Record<PlayerId, boolean> } | null;
+  usedAccusation: PlayerId[];           // คนที่ใช้สิทธิ์กล่าวหาแล้ว (ช่วง questioning)
+  finalTurns: PlayerId[];               // คนที่เสนอชื่อหรือ PASS ไปแล้วใน final-vote
+  vote: {
+    accuser: PlayerId;
+    accused: PlayerId;
+    ballots: Record<PlayerId, boolean>; // ผู้กล่าวหาถูกใส่ true อัตโนมัติ
+    deadline: number;                   // หมดเวลาโหวต: คนที่ยังไม่โหวต = ไม่เห็นด้วย
+  } | null;
   result: { winner: 'spy' | 'agents'; reason: string } | null;
   scores: Record<PlayerId, number>;
 }
 
 type SpyfallAction =
-  | { type: 'START_ROUND' }                       // host เท่านั้น
-  | { type: 'ACCUSE'; target: PlayerId }
+  | { type: 'ACCUSE'; target: PlayerId }          // questioning: ครั้งเดียว/รอบ · final-vote: ครั้งเดียวในช่วงนี้
   | { type: 'BALLOT'; agree: boolean }
+  | { type: 'PASS' }                              // final-vote เท่านั้น: ไม่เสนอชื่อใคร
   | { type: 'SPY_GUESS'; locationId: string }     // สายลับเท่านั้น
-  | { type: 'NEXT_ROUND' };                       // host เท่านั้น
+  | { type: 'NEXT_ROUND' };                       // host เท่านั้น (phase reveal)
+// เริ่มรอบแรก = room:start → setup() ไม่มี START_ROUND
 // หมดเวลา = onDeadline() ที่ server เรียกเอง ไม่ใช่ action จาก client
 ```
 
@@ -198,11 +212,35 @@ type SpyfallAction =
 
 ---
 
+## การตัดสินใจเชิงออกแบบ
+
+บันทึก 2026-10-16 — แก้ส่วนที่กำกวมในสเปกก่อนเริ่มเขียนโค้ด
+
+1. **สิทธิ์ host:** ห้องเป็นเจ้าของข้อมูล host แล้วส่ง `ctx: { hostId }` เข้า `validate` เกมใช้ข้อมูลนี้ตรวจ action ที่ host เท่านั้นทำได้ (เช่น `NEXT_ROUND`) แพลตฟอร์มไม่ต้องรู้ว่า action ไหนเป็นของ host
+2. **ไม่มี phase `lobby` ในเกม:** ล็อบบี้เป็นสถานะของห้อง `room:start` เรียก `setup()` แล้วเข้า `questioning` ทันที ตัด `START_ROUND` ออก `NEXT_ROUND` (ทำได้ใน `reveal`) สุ่มสายลับ สถานที่ และบทบาทใหม่ด้วย `rng` ที่ส่งเข้า `apply`
+3. **รายชื่อสถานที่อ้างอิงไม่อยู่ใน view:** client import รายชื่อจาก `spyfall/data` แบบ static ส่วน `playerView` ส่งแค่ `locationSetId` เพื่อให้เทสต์ "view ของสายลับไม่มี id สถานที่ปัจจุบัน" เป็นจริงได้ ถ้าเฟส 2 มีชุดสถานที่ที่ผู้เล่นสร้างเอง ให้ส่งรายชื่อผ่าน `room:state` ซึ่งเป็นข้อมูลสาธารณะ ไม่ส่งใน view
+4. **กลไก `final-vote`:** ผู้เล่นทุกคนได้สิทธิ์ใหม่ 1 ครั้งในช่วงนี้ (ไม่สน `usedAccusation`) จะ `ACCUSE` หรือ `PASS` ก็ได้ เมื่อมีคนเสนอชื่อ จะเข้าโหวตเอกฉันท์เหมือนช่วงปกติ ถ้าผ่านก็ไป `reveal` ถ้าไม่ผ่านก็กลับ `final-vote` เมื่อทุกคนใช้สิทธิ์ครบ (`finalTurns` ครบ) แล้วยังไม่มีใครถูกจับ สายลับชนะ สายลับเดาสถานที่ใน `final-vote` ไม่ได้
+5. **ใครต้องโหวต:** ผู้กล่าวหาถือว่าเห็นด้วยอัตโนมัติ ผู้ถูกกล่าวหาโหวตไม่ได้ ผู้เล่นที่เหลือต้องโหวต ถ้าโหวตไม่ผ่าน ผู้กล่าวหาเสียสิทธิ์ของรอบนั้น ถ้ามีคนกด "ไม่เห็นด้วย" ให้ตัดสินว่าไม่ผ่านทันทีโดยไม่ต้องรอคนที่เหลือ
+6. **ผู้เล่นหลุดหรือถูกเตะกลางเกม:**
+   - โหวตแต่ละครั้งมีเวลา 60 วินาที (`vote.deadline` ผ่าน `nextDeadline`/`onDeadline`) ถ้าหมดเวลาแล้วยังมีคนไม่โหวต ถือว่าไม่ผ่าน
+   - ถ้าผู้เล่นถูกเตะหรือออก server เรียก `onPlayerLeave` ถ้าคนที่ออกเป็นสายลับ ฝ่ายผู้เล่นชนะ ถ้าผู้เล่นเหลือน้อยกว่า `minPlayers` จบรอบโดยไม่มีผู้ชนะ (`reason: 'not-enough-players'`) นอกจากนั้นให้ตัดคนที่ออกออกจากการโหวตแล้วตัดสินโหวตใหม่
+7. **ชื่อผู้เล่น:** state ของเกมเก็บแค่ `PlayerId` ส่วนชื่อมาจาก `room:state` แล้ว client เอามารวมกันเอง
+
+### Monorepo
+
+- package ทั้งหมด export ซอร์ส TypeScript ตรง ๆ (`"exports": "./src/index.ts"`) ไม่ต้อง build ตอนพัฒนา web ใช้ `transpilePackages` ส่วน server รันด้วย `tsx` และ bundle ด้วย `tsup` ตอน deploy
+- `pnpm typecheck` = `tsc --noEmit` ในทุก package ผ่าน `pnpm -r`
+- `pnpm test` = Vitest ที่ root โดยแต่ละ package เป็น project ของตัวเอง (`vitest.config.ts`)
+- `pnpm lint` บังคับกฎสถาปัตยกรรมข้อ 3–4 ด้วย ESLint: โฟลเดอร์ `rules/` ห้าม import socket/fastify/React/DB/Node และห้ามใช้ `Math.random`, `Date.now`, `new Date()` ส่วน `engine` ห้าม import เกมใด ๆ
+- เวอร์ชัน: Node 24, pnpm 10, TypeScript **6.0** (ยังไม่ใช้ 7 เพราะ typescript-eslint รองรับแค่ `<6.1`) ใน TS 6 ค่าเริ่มต้นของ `types` คือ `[]` ดังนั้น package ไหนต้องใช้ Node API ให้ใส่ `"types": ["node"]` เอง
+
+---
+
 ## Roadmap
 
 ### เฟส 1 — MVP (ทำตามลำดับ)
 
-- [ ] ตั้ง monorepo (pnpm workspaces, TypeScript, Vitest, ESLint/Prettier)
+- [x] ตั้ง monorepo (pnpm workspaces, TypeScript, Vitest, ESLint/Prettier)
 - [ ] `packages/engine`: `GameDefinition`, `Rng`, game runner, registry
 - [ ] `packages/games/spyfall/rules` + unit test ทั้งหมดข้างบน
 - [ ] `packages/games/spyfall/data`: ชุดสถานที่และบทบาทที่เขียนเอง อย่างน้อย 20 สถานที่
