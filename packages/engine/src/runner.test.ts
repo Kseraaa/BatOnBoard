@@ -84,7 +84,7 @@ describe('dispatchAction', () => {
 
   it('คืนรหัส error จาก validate และไม่เปลี่ยน state', () => {
     const state = start();
-    const before = structuredClone(state);
+    const before = JSON.parse(JSON.stringify(state)) as SecretState;
     const res = dispatchAction(secretGame, state, { type: 'END' }, 'bob', ctx, T0, createRng(1));
     expect(res).toEqual({ ok: false, error: 'not-host' });
     expect(state).toEqual(before);
@@ -106,7 +106,7 @@ describe('dispatchAction', () => {
 
   it('apply ได้ state ใหม่ ไม่แก้ของเดิม และได้ now/rng ที่ส่งเข้าไป', () => {
     const state = start();
-    const before = structuredClone(state);
+    const before = JSON.parse(JSON.stringify(state)) as SecretState;
     const target = state.secrets.bob as number;
     const res = dispatchAction(
       secretGame,

@@ -143,7 +143,8 @@ interface SpyfallState {
   locationId: string;
   roles: Record<PlayerId, string>;      // บทบาทของคนที่ไม่ใช่สายลับ
   firstAsker: PlayerId;
-  deadline: number | null;              // เวลาหมดรอบ (ms epoch)
+  durationMs: number;                   // เวลาถามตอบจากตั้งค่าห้อง (ใช้ซ้ำตอน NEXT_ROUND)
+  deadline: number | null;              // เวลาหมดของ questioning / final-vote (ms epoch)
   pausedRemaining: number | null;       // เวลาที่เหลือตอนหยุดเพื่อโหวต
   usedAccusation: PlayerId[];           // คนที่ใช้สิทธิ์กล่าวหาแล้ว (ช่วง questioning)
   finalTurns: PlayerId[];               // คนที่เสนอชื่อหรือ PASS ไปแล้วใน final-vote
@@ -153,8 +154,9 @@ interface SpyfallState {
     ballots: Record<PlayerId, boolean>; // ผู้กล่าวหาถูกใส่ true อัตโนมัติ
     deadline: number;                   // หมดเวลาโหวต: คนที่ยังไม่โหวต = ไม่เห็นด้วย
   } | null;
-  result: { winner: 'spy' | 'agents'; reason: string } | null;
-  scores: Record<PlayerId, number>;
+  spyGuess: string | null;              // สถานที่ที่สายลับเดา (แสดงตอน reveal)
+  result: { winner: 'spy' | 'agents' | null; reason: WinReason } | null; // null = คนไม่พอ
+  scores: Record<PlayerId, number>;     // +1 ให้ทุกคนในฝ่ายที่ชนะ
 }
 
 type SpyfallAction =
@@ -199,14 +201,14 @@ type SpyfallAction =
 
 เขียนเทสต์ข้อแรกก่อนข้ออื่น:
 
-- [ ] `JSON.stringify(playerView(state, spy))` ต้องไม่มี id หรือชื่อของสถานที่ปัจจุบัน และไม่มีบทบาทของคนอื่น
-- [ ] แจกการ์ดแล้วมีสายลับ 1 คนพอดี คนที่เหลือได้สถานที่เดียวกัน
-- [ ] ผู้เล่นกล่าวหาได้คนละ 1 ครั้งต่อรอบ
-- [ ] โหวตต้องเอกฉันท์ยกเว้นผู้ถูกกล่าวหา และผู้ถูกกล่าวหาโหวตไม่ได้
-- [ ] เวลาหยุดตอนโหวตและเดินต่อจาก `pausedRemaining`
-- [ ] สายลับเดาถูก/ผิด ให้ผลถูกฝ่าย และเดาไม่ได้ระหว่างโหวต
-- [ ] action ผิดคนหรือผิด phase ถูกปฏิเสธ (`validate` คืนข้อความ error)
-- [ ] ใช้ seeded `rng` แล้วผลลัพธ์ซ้ำได้
+- [x] `JSON.stringify(playerView(state, spy))` ต้องไม่มี id หรือชื่อของสถานที่ปัจจุบัน และไม่มีบทบาทของคนอื่น — `rules/leak.test.ts` (ชื่อสถานที่ไม่เคยอยู่ใน state ของกติกา ส่วนเทสต์ที่ใช้ data จริงจะเพิ่มในข้อ 4)
+- [x] แจกการ์ดแล้วมีสายลับ 1 คนพอดี คนที่เหลือได้สถานที่เดียวกัน
+- [x] ผู้เล่นกล่าวหาได้คนละ 1 ครั้งต่อรอบ
+- [x] โหวตต้องเอกฉันท์ยกเว้นผู้ถูกกล่าวหา และผู้ถูกกล่าวหาโหวตไม่ได้
+- [x] เวลาหยุดตอนโหวตและเดินต่อจาก `pausedRemaining`
+- [x] สายลับเดาถูก/ผิด ให้ผลถูกฝ่าย และเดาไม่ได้ระหว่างโหวต
+- [x] action ผิดคนหรือผิด phase ถูกปฏิเสธ (`validate` คืนข้อความ error)
+- [x] ใช้ seeded `rng` แล้วผลลัพธ์ซ้ำได้
 
 ### E2E (Playwright) — `e2e/`
 
@@ -249,7 +251,20 @@ type SpyfallAction =
 - `pnpm typecheck` = `tsc --noEmit` ในทุก package ผ่าน `pnpm -r`
 - `pnpm test` = Vitest ที่ root โดยแต่ละ package เป็น project ของตัวเอง (`vitest.config.ts`)
 - `pnpm lint` บังคับกฎสถาปัตยกรรมข้อ 3–4 ด้วย ESLint: โฟลเดอร์ `rules/` ห้าม import socket/fastify/React/DB/Node และห้ามใช้ `Math.random`, `Date.now`, `new Date()` ส่วน `engine` ห้าม import เกมใด ๆ
+- **ห้ามใช้ `pnpm -s typecheck`** เพราะ `-s` ร่วมกับ `-r --parallel` ซ่อน error ของ tsc ให้ดู exit code หรือรันแบบไม่มี `-s` แทน
 - เวอร์ชัน: Node 24, pnpm 10, TypeScript **6.0** (ยังไม่ใช้ 7 เพราะ typescript-eslint รองรับแค่ `<6.1`) ใน TS 6 ค่าเริ่มต้นของ `types` คือ `[]` ดังนั้น package ไหนต้องใช้ Node API ให้ใส่ `"types": ["node"]` เอง
+
+### Spyfall rules
+
+- `rules/` ไม่ import `data/` แต่เป็น factory `createSpyfall({ locationSetId, locations })` เทสต์จึงใช้ชุดสถานที่จำลอง (`rules/fixtures.ts`) ได้ ส่วนเกมที่ลงทะเบียนจริงจะสร้างจาก data ในข้อ 4 factory ตรวจว่ามีอย่างน้อย 2 สถานที่ id ไม่ซ้ำ และแต่ละสถานที่มีบทบาทไม่ซ้ำอย่างน้อย 7 อย่าง (= `MAX_PLAYERS - 1`)
+- ค่าคงที่: ถามตอบ 8 นาที (ปรับได้ 1–30 นาที), โหวต 60 วินาที (`VOTE_MS`), final-vote 90 วินาที (`FINAL_VOTE_MS`) final-vote หมดเวลาแล้วไม่มีใครถูกจับ = สายลับชนะ (`time-up`)
+- `NEXT_ROUND` สุ่มสถานที่ใหม่ที่ไม่ซ้ำกับรอบก่อน และเก็บคะแนนไว้
+- `isOver` เป็นจริงเฉพาะเมื่อ reveal แล้วคนไม่พอเล่นต่อ ระหว่าง reveal ปกติยังรับ `NEXT_ROUND`
+- `SpyfallView` มี:
+  - `you` เป็นหนึ่งใน `spy`, `agent` (มี `locationId`, `roleId`) หรือ `spectator`
+  - `vote.voted` บอกแค่ว่าใครโหวตแล้ว ไม่บอกว่าโหวตอะไร
+  - `reveal` เป็น `null` จนถึง phase `reveal`
+- รหัส error อยู่ใน `SpyfallError` (`not-host`, `accusation-used`, `wrong-phase` ฯลฯ)
 
 ---
 
@@ -259,7 +274,7 @@ type SpyfallAction =
 
 - [x] ตั้ง monorepo (pnpm workspaces, TypeScript, Vitest, ESLint/Prettier)
 - [x] `packages/engine`: `GameDefinition`, `Rng`, game runner, registry
-- [ ] `packages/games/spyfall/rules` + unit test ทั้งหมดข้างบน
+- [x] `packages/games/spyfall/rules` + unit test ทั้งหมดข้างบน
 - [ ] `packages/games/spyfall/data`: ชุดสถานที่และบทบาทที่เขียนเอง อย่างน้อย 20 สถานที่
 - [ ] `apps/server`: ห้อง, token, action pipeline, playerView, timer, reconnect
 - [ ] `apps/web`: หน้าแรก, สร้าง/เข้าห้อง, ล็อบบี้, หน้าเล่น, หน้า reveal
