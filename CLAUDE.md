@@ -214,9 +214,9 @@ type SpyfallAction =
 
 ### E2E (Playwright) — `e2e/`
 
-- [ ] เปิด 4 browser context: สร้างห้อง → เข้าร่วมผ่านลิงก์ → เริ่มเกม → มีหน้าจอเดียวที่แสดงว่าเป็นสายลับ
-- [ ] กล่าวหา → โหวต → หน้า reveal ถูกต้อง
-- [ ] รีเฟรชกลางเกมแล้วกลับเข้ามาเห็น view เดิม
+- [x] เปิด 4 browser context: สร้างห้อง → เข้าร่วมผ่านลิงก์ → เริ่มเกม → มีหน้าจอเดียวที่แสดงว่าเป็นสายลับ
+- [x] กล่าวหา → โหวต → หน้า reveal ถูกต้อง
+- [x] รีเฟรชกลางเกมแล้วกลับเข้ามาเห็น view เดิม
 
 ---
 
@@ -229,7 +229,7 @@ type SpyfallAction =
 - ออกแบบ mobile-first: ผู้เล่นส่วนใหญ่ใช้มือถือ ปุ่มสำคัญต้องกดง่ายด้วยนิ้วเดียว
 - หน้าบทบาทต้องซ่อนได้ (กดค้างเพื่อดู หรือปุ่มซ่อน) เพราะคนข้าง ๆ อาจมองเห็นจอ
 - CORS ของ game server รับเฉพาะโดเมนเว็บของโปรเจกต์ มี endpoint `/health`
-- รัน `pnpm test` และ `pnpm typecheck` ให้ผ่านก่อนจบทุกงาน
+- รัน `pnpm test`, `pnpm typecheck` และ `pnpm lint` ให้ผ่านก่อนจบทุกงาน ถ้าแก้ UI หรือ flow ของห้องให้รัน `pnpm e2e` ด้วย
 
 ---
 
@@ -300,6 +300,14 @@ type SpyfallAction =
 - **การ์ดบทบาท:** `HoldToReveal` กดค้างเพื่อดู มีปุ่มเปิดค้าง/ซ่อน ปุ่มสำคัญสูงอย่างน้อย 48px และหน้าจอกว้างไม่เกิน `max-w-md`
 - **รัน dev:** `.claude/launch.json` มี `server` (พอร์ต 4000) และ `web` (พอร์ต 3000) ตั้ง `NEXT_PUBLIC_SERVER_URL` ได้ (ดู `apps/web/.env.example`)
 
+### E2E (`e2e/`)
+
+- รัน `pnpm e2e` ได้ Playwright จะเปิด server ที่พอร์ต 4100 และ `next dev` ที่พอร์ต 3100 (`distDir` เป็น `.next-e2e`) เอง จึงรันพร้อม dev server ปกติได้
+- ใช้ viewport แบบ Pixel 7 ผู้เล่นแต่ละคนเป็น browser context แยก ในเครื่อง dev ใช้ Chrome ที่ติดตั้งอยู่ (`channel: 'chrome'`) ส่วน CI ใช้ Chromium ของ Playwright (ต้องรัน `pnpm --filter @batonboard/e2e exec playwright install --with-deps chromium` ก่อน)
+- เทสต์อ่านข้อความจากไฟล์ข้อความจริง (`apps/web/src/messages/th.ts` และ `spyfall/client/messages.ts`) ใช้ `exact: true` กับชื่อปุ่มทุกครั้ง เพราะ "เห็นด้วย" เป็น substring ของ "ไม่เห็นด้วย" และหาองค์ประกอบด้วย `data-testid` (`room-code`, `role-spy`/`role-agent`/`role-location`/`role-name`, `spy-guess`, `reveal-winner`/`reveal-spy`, `data-phase`)
+- ปุ่มบนหน้าแรกกดได้หลัง hydrate แล้วเท่านั้น (state `ready`) กันกรณีกดก่อน JS พร้อมแล้วปุ่มไม่ทำอะไร ซึ่งเจอทั้งใน e2e และบนมือถือที่ช้า
+- `next-env.d.ts` และ `apps/web/AGENTS.md` เป็นไฟล์ที่ Next สร้างเองและอยู่ใน `.gitignore` คำสั่ง `typecheck` ของเว็บรัน `next typegen` ก่อน `tsc`
+
 ---
 
 ## Roadmap
@@ -312,7 +320,7 @@ type SpyfallAction =
 - [x] `packages/games/spyfall/data`: ชุดสถานที่และบทบาทที่เขียนเอง อย่างน้อย 20 สถานที่
 - [x] `apps/server`: ห้อง, token, action pipeline, playerView, timer, reconnect
 - [x] `apps/web`: หน้าแรก, สร้าง/เข้าห้อง, ล็อบบี้, หน้าเล่น, หน้า reveal
-- [ ] Playwright e2e 4 ผู้เล่น
+- [x] Playwright e2e 4 ผู้เล่น
 - [ ] Deploy (Vercel + Fly.io/Railway)
 
 ### เฟส 2 — ขัดเกลา

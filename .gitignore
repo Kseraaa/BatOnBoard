@@ -10,3 +10,6 @@ coverage/
 playwright-report/
 test-results/
 .DS_Store
+.next-e2e/
+apps/web/next-env.d.ts
+apps/web/AGENTS.md

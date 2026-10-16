@@ -19,8 +19,13 @@ export default function HomePage() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // ปุ่มกดได้หลัง hydrate เท่านั้น — มือถือช้า ๆ กดก่อน JS พร้อมแล้วปุ่มจะเงียบ
+  const [ready, setReady] = useState(false);
 
-  useEffect(() => setName(storage.getName()), []);
+  useEffect(() => {
+    setName(storage.getName());
+    setReady(true);
+  }, []);
 
   const trimmed = name.trim();
 
@@ -86,7 +91,7 @@ export default function HomePage() {
             <p className="mt-1 text-sm text-muted-foreground">{g.description[locale]}</p>
           </button>
         ))}
-        <Button block size="lg" disabled={busy} onClick={create}>
+        <Button block size="lg" disabled={busy || !ready} onClick={create}>
           {busy ? t.home.creating : t.home.createRoom}
         </Button>
       </section>
@@ -109,7 +114,12 @@ export default function HomePage() {
             className="font-mono uppercase tracking-widest"
             onChange={(e) => setCode(e.target.value)}
           />
-          <Button type="submit" variant="secondary" className="shrink-0 whitespace-nowrap">
+          <Button
+            type="submit"
+            variant="secondary"
+            disabled={!ready}
+            className="shrink-0 whitespace-nowrap"
+          >
             {t.home.join}
           </Button>
         </form>

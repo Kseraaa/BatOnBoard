@@ -124,11 +124,15 @@ function RoleCard({ ctx }: { ctx: Ctx }) {
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
               {m.card.location}
             </p>
-            <p className="text-2xl font-bold">{locationName(ctx, you.locationId)}</p>
+            <p data-testid="role-location" className="text-2xl font-bold">
+              {locationName(ctx, you.locationId)}
+            </p>
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">{m.card.role}</p>
-            <p className="text-lg font-semibold">{roleName(ctx, you.locationId, you.roleId)}</p>
+            <p data-testid="role-name" className="text-lg font-semibold">
+              {roleName(ctx, you.locationId, you.roleId)}
+            </p>
           </div>
         </div>
       )}
@@ -273,7 +277,7 @@ function SpyGuess({ ctx }: { ctx: Ctx }) {
     );
   }
   return (
-    <Card className="border-destructive">
+    <Card className="border-destructive" data-testid="spy-guess">
       <CardTitle className="mb-1">{m.spy.guessTitle}</CardTitle>
       <p className="mb-3 text-sm text-muted-foreground">{m.spy.guessHelp}</p>
       {choice ? (
