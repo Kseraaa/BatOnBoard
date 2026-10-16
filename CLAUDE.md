@@ -201,7 +201,7 @@ type SpyfallAction =
 
 เขียนเทสต์ข้อแรกก่อนข้ออื่น:
 
-- [x] `JSON.stringify(playerView(state, spy))` ต้องไม่มี id หรือชื่อของสถานที่ปัจจุบัน และไม่มีบทบาทของคนอื่น — `rules/leak.test.ts` (ชื่อสถานที่ไม่เคยอยู่ใน state ของกติกา ส่วนเทสต์ที่ใช้ data จริงจะเพิ่มในข้อ 4)
+- [x] `JSON.stringify(playerView(state, spy))` ต้องไม่มี id หรือชื่อของสถานที่ปัจจุบัน และไม่มีบทบาทของคนอื่น — `rules/leak.test.ts` และ `index.test.ts` ที่ใช้ data จริงตรวจชื่อสถานที่และชื่อบทบาททั้งไทยและอังกฤษ
 - [x] แจกการ์ดแล้วมีสายลับ 1 คนพอดี คนที่เหลือได้สถานที่เดียวกัน
 - [x] ผู้เล่นกล่าวหาได้คนละ 1 ครั้งต่อรอบ
 - [x] โหวตต้องเอกฉันท์ยกเว้นผู้ถูกกล่าวหา และผู้ถูกกล่าวหาโหวตไม่ได้
@@ -266,6 +266,14 @@ type SpyfallAction =
   - `reveal` เป็น `null` จนถึง phase `reveal`
 - รหัส error อยู่ใน `SpyfallError` (`not-host`, `accusation-used`, `wrong-phase` ฯลฯ)
 
+### Spyfall data
+
+- ชุด `batonboard-original-v1` (`data/original-v1.ts`) มี 26 สถานที่ แห่งละ 7 บทบาท มีชื่อทั้งไทยและอังกฤษ (`LocalizedText`) ส่วนใหญ่เป็นสถานที่ในชีวิตคนไทย
+- `data/` เก็บชื่อที่แสดง แต่กติกาเห็นแค่ id (ผ่าน `toLocationDefs`) client หาชุดสถานที่จาก `locationSetId` ใน view ด้วย `getLocationSet`
+- `@batonboard/spyfall` (root `index.ts`) export ตัวแปร `spyfall` ที่สร้างจากชุดเริ่มต้นแล้ว เป็นตัวที่ server ใช้ลงทะเบียนใน registry
+- `data.test.ts` ตรวจว่ามีอย่างน้อย 20 สถานที่ id เป็น slug ชื่อไม่ซ้ำ บทบาทพอ 7 อย่าง มีชื่อไทย/อังกฤษครบ และ**ไม่ตรงกับสถานที่ของเกมต้นฉบับ** (เทียบกับรายการห้ามใช้ที่อยู่ในไฟล์เทสต์เท่านั้น ห้ามย้ายรายการนี้ไปไว้ใน data หรือ UI)
+- จะเพิ่มชุดใหม่ ให้สร้างไฟล์ใน `data/` แล้วเพิ่มใน `locationSets` เทสต์ทุกข้อจะรันกับทุกชุดอัตโนมัติ
+
 ---
 
 ## Roadmap
@@ -275,7 +283,7 @@ type SpyfallAction =
 - [x] ตั้ง monorepo (pnpm workspaces, TypeScript, Vitest, ESLint/Prettier)
 - [x] `packages/engine`: `GameDefinition`, `Rng`, game runner, registry
 - [x] `packages/games/spyfall/rules` + unit test ทั้งหมดข้างบน
-- [ ] `packages/games/spyfall/data`: ชุดสถานที่และบทบาทที่เขียนเอง อย่างน้อย 20 สถานที่
+- [x] `packages/games/spyfall/data`: ชุดสถานที่และบทบาทที่เขียนเอง อย่างน้อย 20 สถานที่
 - [ ] `apps/server`: ห้อง, token, action pipeline, playerView, timer, reconnect
 - [ ] `apps/web`: หน้าแรก, สร้าง/เข้าห้อง, ล็อบบี้, หน้าเล่น, หน้า reveal
 - [ ] Playwright e2e 4 ผู้เล่น
