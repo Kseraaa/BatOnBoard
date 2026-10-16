@@ -30,8 +30,8 @@ export const createRoomSchema = z.object({
   gameId: idSchema,
 });
 
+/** รหัสห้องอยู่ใน URL (`/api/rooms/<code>/join`) ตรวจด้วย roomCodeSchema แยก */
 export const joinRoomSchema = z.object({
-  code: roomCodeSchema,
   name: playerNameSchema,
   /** token เดิมจากการเข้าห้องครั้งก่อน — ใช้กลับเข้าห้องเป็นผู้เล่นคนเดิม */
   token: z.string().min(1).max(128).optional(),
@@ -65,48 +65,50 @@ export interface RoomStateMessage {
   status: RoomStatus;
   options: unknown;
   players: RoomPlayer[];
+}
+
+/**
+ * สิ่งที่ผู้เล่นคนหนึ่งเห็นตอนนี้ — ส่งเฉพาะให้เจ้าของ token (กฎข้อ 2)
+ * etag เปลี่ยนเมื่อมีอะไรเปลี่ยน ให้ client ส่งกลับมาตอน poll เพื่อข้ามข้อมูลซ้ำ
+ */
+export interface RoomSnapshot<View = unknown> {
+  etag: string;
+  room: RoomStateMessage;
+  /** playerView ของผู้เล่นคนนี้ — null ตอนอยู่ล็อบบี้ */
+  view: View | null;
+  /** เวลาของ server ตอนตอบ ให้ client ชดเชยนาฬิกาเครื่องตอนนับถอยหลัง */
   serverNow: number;
 }
-
-export interface GameViewMessage<View = unknown> {
-  view: View;
-  /** เวลาของ server ตอนส่ง ให้ client ชดเชยนาฬิกาเครื่องตอนนับถอยหลัง */
-  serverNow: number;
-}
-
-export interface ErrorMessage {
-  code: string;
-}
-
-export type KickedReason = 'kicked' | 'replaced';
 
 export interface JoinedMessage {
   code: string;
   playerId: string;
-  /** เก็บไว้ฝั่ง client ใช้กลับเข้าห้องเดิม — เป็นความลับของผู้เล่นคนนี้ */
+  /** เก็บไว้ฝั่ง client ใช้ยืนยันตัวตนทุก request — เป็นความลับของผู้เล่นคนนี้ */
   token: string;
 }
 
 export type Ack<T = undefined> = { ok: true; value: T } | { ok: false; error: string };
-export type AckFn<T = undefined> = (res: Ack<T>) => void;
 
-export interface ClientToServerEvents {
-  'room:create': (payload: CreateRoomPayload, ack?: AckFn<JoinedMessage>) => void;
-  'room:join': (payload: JoinRoomPayload, ack?: AckFn<JoinedMessage>) => void;
-  'room:leave': (ack?: AckFn) => void;
-  'room:settings': (payload: SettingsPayload, ack?: AckFn) => void;
-  'room:start': (ack?: AckFn) => void;
-  'room:lobby': (ack?: AckFn) => void;
-  'room:kick': (payload: KickPayload, ack?: AckFn) => void;
-  'game:action': (payload: unknown, ack?: AckFn) => void;
-}
-
-export interface ServerToClientEvents {
-  'room:state': (msg: RoomStateMessage) => void;
-  'room:kicked': (msg: { reason: KickedReason }) => void;
-  'game:view': (msg: GameViewMessage) => void;
-  error: (msg: ErrorMessage) => void;
-}
+/**
+ * HTTP API (Next.js route handlers ใน apps/web)
+ * ทุก request ที่ต้องรู้ตัวผู้เล่นส่ง header `Authorization: Bearer <token>`
+ * ทุกคำตอบเป็น Ack<T> ในรูป JSON
+ */
+export const api = {
+  /** POST CreateRoomPayload → Ack<JoinedMessage> */
+  create: () => '/api/rooms',
+  /** POST JoinRoomPayload (+ token เดิมถ้ามี) → Ack<JoinedMessage> */
+  join: (code: string) => `/api/rooms/${code}/join`,
+  /** GET ?etag=<etag ล่าสุด> → Ack<RoomSnapshot | null> (null = ไม่มีอะไรเปลี่ยน) */
+  poll: (code: string) => `/api/rooms/${code}`,
+  /** POST → Ack<RoomSnapshot> ทุกคำสั่งด้านล่างคืน snapshot ล่าสุดให้ทันที */
+  leave: (code: string) => `/api/rooms/${code}/leave`,
+  settings: (code: string) => `/api/rooms/${code}/settings`,
+  start: (code: string) => `/api/rooms/${code}/start`,
+  lobby: (code: string) => `/api/rooms/${code}/lobby`,
+  kick: (code: string) => `/api/rooms/${code}/kick`,
+  action: (code: string) => `/api/rooms/${code}/action`,
+} as const;
 
 /** รหัส error ระดับห้อง (ของ engine และเกมมีรหัสของตัวเอง) */
 export const RoomError = {
@@ -116,11 +118,11 @@ export const RoomError = {
   RoomFull: 'room-full',
   NameTaken: 'name-taken',
   NotInRoom: 'not-in-room',
-  AlreadyInRoom: 'already-in-room',
+  Kicked: 'kicked',
   NotHost: 'not-host',
   NotInLobby: 'not-in-lobby',
   NotPlaying: 'not-playing',
-  NotAParticipant: 'not-a-participant',
   PlayerNotFound: 'player-not-found',
   CannotKickSelf: 'cannot-kick-self',
+  Busy: 'busy',
 } as const;

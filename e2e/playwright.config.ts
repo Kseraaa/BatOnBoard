@@ -2,9 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * E2E หลายผู้เล่น: แต่ละผู้เล่นเป็น browser context แยก (localStorage แยก = ตัวตนแยก)
- * ใช้พอร์ตแยกจาก dev (server 4100, web 3100) จะได้รันพร้อม `pnpm dev` ได้
+ * ใช้พอร์ต 3100 และ distDir แยกจาก dev จะได้รันพร้อม `pnpm dev` ได้
  */
-const SERVER_PORT = 4100;
 const WEB_PORT = 3100;
 const CI = !!process.env.CI;
 
@@ -31,24 +30,20 @@ export default defineConfig({
       },
     },
   ],
-  webServer: [
-    {
-      command: 'pnpm --filter @batonboard/server start',
-      url: `http://localhost:${SERVER_PORT}/health`,
-      env: { PORT: String(SERVER_PORT), WEB_ORIGIN: `http://localhost:${WEB_PORT}` },
-      reuseExistingServer: !CI,
-      timeout: 60_000,
+  webServer: {
+    // เว็บอย่างเดียว — API ของห้องอยู่ใน Next.js (store ในหน่วยความจำของ next dev)
+    command: `pnpm --filter @batonboard/web exec next dev -p ${WEB_PORT}`,
+    url: `http://localhost:${WEB_PORT}`,
+    env: {
+      NEXT_DIST_DIR: '.next-e2e',
+      NEXT_TELEMETRY_DISABLED: '1',
+      // poll ถี่ขึ้นให้เทสต์เร็ว
+      NEXT_PUBLIC_POLL_MS: '300',
+      // ไม่ใช้ Redis แม้ในเครื่องจะตั้ง env ไว้
+      KV_REST_API_URL: '',
+      KV_REST_API_TOKEN: '',
     },
-    {
-      command: `pnpm --filter @batonboard/web exec next dev -p ${WEB_PORT}`,
-      url: `http://localhost:${WEB_PORT}`,
-      env: {
-        NEXT_PUBLIC_SERVER_URL: `http://localhost:${SERVER_PORT}`,
-        NEXT_DIST_DIR: '.next-e2e',
-        NEXT_TELEMETRY_DISABLED: '1',
-      },
-      reuseExistingServer: !CI,
-      timeout: 120_000,
-    },
-  ],
+    reuseExistingServer: !CI,
+    timeout: 120_000,
+  },
 });

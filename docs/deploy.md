@@ -1,107 +1,58 @@
-# Deploy BatOnBoard
+# Deploy BatOnBoard (Vercel อย่างเดียว)
 
-| ส่วน                        | ที่ deploy                                | ไฟล์ตั้งค่า                                           |
-| --------------------------- | ----------------------------------------- | ----------------------------------------------------- |
-| Game server (`apps/server`) | Fly.io เครื่องเดียว รันตลอด ภูมิภาค `sin` | `fly.toml`, `apps/server/Dockerfile`, `.dockerignore` |
-| เว็บ (`apps/web`)           | Vercel                                    | `apps/web/vercel.json`                                |
+ทั้งเว็บและ API ของห้องอยู่ใน `apps/web` (Next.js) deploy เป็นโปรเจกต์ Vercel เดียว
+ห้องเก็บใน **Upstash Redis** ซึ่งเชื่อมผ่าน Vercel Marketplace ได้ในไม่กี่คลิก
 
-ลำดับ: **deploy server ก่อน** (เพื่อให้ได้ URL ไปตั้งในเว็บ) → deploy เว็บ → กลับไปใส่โดเมนเว็บใน `WEB_ORIGIN` ของ server
-
----
-
-## 0. เตรียม
-
-1. push โค้ดขึ้น GitHub (`origin` = `github.com/Kseraaa/BatOnBoard`)
-   ```bash
-   git push -u origin main
-   ```
-2. สมัคร/ล็อกอิน [fly.io](https://fly.io) และ [vercel.com](https://vercel.com) (Fly.io ต้องใส่บัตรเครดิตก่อนสร้างเครื่อง)
-3. ติดตั้ง flyctl บน Windows (PowerShell):
-   ```powershell
-   iwr https://fly.io/install.ps1 -useb | iex
-   ```
-   แล้ว `fly auth login`
+| ส่วน                    | ที่ deploy             | ไฟล์ตั้งค่า                                                   |
+| ----------------------- | ---------------------- | ------------------------------------------------------------- |
+| เว็บ + API (`apps/web`) | Vercel                 | `apps/web/vercel.json`                                        |
+| ที่เก็บห้อง             | Upstash Redis (แผนฟรี) | env `KV_REST_API_URL`, `KV_REST_API_TOKEN` (Vercel ใส่ให้เอง) |
 
 ---
 
-## 1. Game server บน Fly.io
+## 1. สร้างโปรเจกต์บน Vercel
 
-1. **ตั้งชื่อ app** — เปิด `fly.toml` แก้ `app = "batonboard-server"` เป็นชื่อที่ไม่ซ้ำ (เช่น `batonboard-kseraaa`) URL จะเป็น `https://<ชื่อ>.fly.dev`
-2. **สร้าง app** (ที่ root ของ repo):
-   ```bash
-   fly apps create <ชื่อ-app>
-   ```
-3. **deploy แบบเครื่องเดียว** — สำคัญ: ห้องเก็บในหน่วยความจำ ถ้ามี 2 เครื่อง ผู้เล่นจะกระจายไปคนละเครื่องแล้วหาห้องกันไม่เจอ
-   ```bash
-   fly deploy --ha=false
-   ```
-   (Fly build image ให้บน remote builder — ไม่ต้องมี Docker ในเครื่อง)
-4. **ตรวจ**:
-   ```bash
-   fly status
-   curl https://<ชื่อ-app>.fly.dev/health
-   ```
-   ต้องเห็น `{"ok":true}` และ `fly status` มีเครื่องเดียว (ถ้ามีสองเครื่อง: `fly scale count 1`)
+1. ล็อกอิน [vercel.com](https://vercel.com) ด้วยบัญชี GitHub
+2. **Add New… → Project** แล้ว import repo `Kseraaa/BatOnBoard`
+3. ตั้งค่าโปรเจกต์:
+   - **Root Directory**: `apps/web` (ปล่อยตัวเลือก "Include files outside the root directory" เปิดไว้ตามค่าเริ่มต้น)
+   - Framework Preset: Next.js (`vercel.json` กำหนดคำสั่ง install/build ไว้แล้ว)
+   - Node.js Version: 24.x (Settings → General)
+4. **ยังไม่ต้องกด Deploy** — ถ้ากดไปแล้วก็ไม่เป็นไร แต่ครั้งแรกจะใช้ไม่ได้จนกว่าจะทำข้อ 2 เพราะยังไม่มีที่เก็บห้อง
 
-> `WEB_ORIGIN` ใน `fly.toml` ตั้งไว้เป็น `https://batonboard.vercel.app` — แก้ให้ตรงโดเมนจริงหลังทำข้อ 2 แล้ว `fly deploy` อีกครั้ง
+## 2. เชื่อม Upstash Redis
 
----
+1. ในโปรเจกต์บน Vercel → แท็บ **Storage** (หรือ Integrations → Marketplace) → เลือก **Upstash** → **Redis**
+2. สร้างฐานข้อมูลใหม่:
+   - Plan: **Free**
+   - Region: เลือกที่ใกล้ฟังก์ชันของ Vercel ที่สุด (ถ้าไม่แน่ใจ ใช้ Singapore `ap-southeast-1`)
+3. กด **Connect** กับโปรเจกต์นี้ ให้ครบทุก environment (Production, Preview, Development)
+   Vercel จะใส่ env `KV_REST_API_URL` และ `KV_REST_API_TOKEN` ให้เอง — ไม่ต้องคัดลอกเอง
+4. **Redeploy** (Deployments → ⋯ → Redeploy) เพื่อให้ env ใหม่มีผล
 
-## 2. เว็บบน Vercel
+> ถ้าลืมเชื่อม Upstash เว็บจะเปิดได้ แต่สร้างห้องไม่ได้ และ log ของ Vercel จะมีข้อความ
+> `ต้องตั้ง Upstash Redis (KV_REST_API_URL / KV_REST_API_TOKEN) ก่อน deploy`
 
-1. Vercel → **Add New… → Project** → import repo `BatOnBoard`
-2. ตั้งค่าโปรเจกต์:
-   - **Root Directory**: `apps/web` (เปิด "Include files outside the root directory" ไว้ — ค่าเริ่มต้นเปิดอยู่แล้ว)
-   - Framework: Next.js (`vercel.json` กำหนดไว้แล้ว รวมถึงคำสั่ง install/build)
-   - Node.js Version: 24.x
-3. **Environment Variables** (Production และ Preview):
+## 3. Function Region
 
-   | Name                     | Value                        |
-   | ------------------------ | ---------------------------- |
-   | `NEXT_PUBLIC_SERVER_URL` | `https://<ชื่อ-app>.fly.dev` |
-
-   ค่านี้ถูกฝังตอน build — ถ้าเปลี่ยนต้อง redeploy เว็บ
-
-4. กด **Deploy** แล้วจดโดเมน production (เช่น `https://batonboard.vercel.app` หรือชื่อที่ Vercel ให้)
-
----
-
-## 3. ผูก CORS ของ server กับโดเมนเว็บ
-
-แก้ `WEB_ORIGIN` ใน `fly.toml` ให้เป็นโดเมนจริง แล้ว deploy server อีกรอบ:
-
-```toml
-WEB_ORIGIN = "https://batonboard.vercel.app"
-```
-
-ถ้าอยากให้ **preview deploy** ของ Vercel ต่อ server ได้ด้วย ใส่แบบ wildcard ได้ (คั่นด้วย comma) — `*` แทนหนึ่งช่วงของชื่อ subdomain (ตัวอักษร/ตัวเลข/ขีด) ใส่ slug ทีมของคุณไว้ท้ายเสมอ เพื่อไม่ให้เว็บคนอื่นบน vercel.app ต่อได้:
-
-```toml
-WEB_ORIGIN = "https://batonboard.vercel.app,https://batonboard-*-<team-slug>.vercel.app"
-```
-
-```bash
-fly deploy --ha=false
-```
-
----
+`apps/web/vercel.json` ตั้ง `"regions": ["sin1"]` (สิงคโปร์) ไว้แล้ว ให้ใกล้ผู้เล่นในไทยและใกล้ Redis ไม่ต้องตั้งเพิ่ม
 
 ## 4. ทดสอบหลัง deploy
 
-1. เปิดเว็บบนมือถือ สร้างห้อง แล้วส่งลิงก์ `/r/<CODE>` ให้เพื่อน 2–3 คน
-2. เริ่มเกม → ทุกคนกดค้างดูการ์ด → มีสายลับคนเดียว
-3. ลองล็อกจอ/สลับแอปแล้วกลับมา → ต้องกลับเข้าห้องเดิมเอง
-4. ดู log ของ server: `fly logs`
+1. เปิดโดเมนที่ Vercel ให้ (เช่น `https://batonboard.vercel.app`) บนมือถือ แล้วสร้างห้อง
+2. ส่งลิงก์ `/r/<CODE>` ให้เพื่อน 2–3 คน แล้วเริ่มเกม → ทุกคนกดค้างดูการ์ด → มีสายลับคนเดียว
+3. ลองล็อกจอหรือสลับแอปแล้วกลับมา → ต้องกลับมาอยู่ห้องเดิม
+4. ลองกล่าวหา → โหวต → ทุกจอเห็นผลภายใน ~1 วินาที
+
+ดู log ได้ที่ Vercel → Deployments → (deployment ล่าสุด) → **Logs**
 
 ---
 
 ## ข้อควรรู้
 
-- **deploy server ใหม่ = ห้องที่เล่นอยู่หายหมด** (state อยู่ในหน่วยความจำ) — deploy ตอนไม่มีคนเล่น จะแก้ได้เมื่อย้ายไป Redis (เฟสหลัง)
-- `auto_stop_machines = "off"` ใน `fly.toml` กันเครื่องหลับ (ถ้าหลับ ห้องหาย) — เครื่อง `shared-cpu-1x` 256MB รันตลอดเดือน มีค่าใช้จ่ายเล็กน้อยตามราคา Fly.io
-- เว็บไม่ต้องตั้ง CORS อะไร server เป็นคนตรวจ origin
-- รันทดสอบ bundle ของ server ในเครื่องได้โดยไม่ต้องมี Docker:
-  ```bash
-  pnpm --filter @batonboard/server build
-  pnpm --filter @batonboard/server start:prod
-  ```
+- **ฟรี:** แผน Hobby ของ Vercel และแผน Free ของ Upstash ใช้ได้โดยไม่ต้องผูกบัตร (ตรวจโควตาปัจจุบันที่หน้า pricing ของทั้งสองเจ้า)
+- **โควตา Upstash:** แผนฟรีจำกัดจำนวนคำสั่งต่อเดือน — poll หนึ่งครั้งใช้ราว 1–2 คำสั่ง (ผู้เล่น 4 คน เล่น 1 ชั่วโมง ≈ 15,000–30,000 คำสั่ง) ดูการใช้งานได้ที่ dashboard ของ Upstash ถ้าใกล้เต็ม ตั้ง env `NEXT_PUBLIC_POLL_MS=2000` ใน Vercel แล้ว redeploy (ช้าลงแต่ใช้คำสั่งครึ่งหนึ่ง)
+- **deploy ใหม่ไม่ทำให้ห้องหาย** ห้องอยู่ใน Redis ไม่ใช่ในเครื่อง — deploy ระหว่างมีคนเล่นได้ (แต่ถ้าแก้รูปแบบข้อมูลห้อง ห้องเก่าอาจใช้ไม่ได้)
+- ห้องหมดอายุเองเมื่อไม่มีใครเข้าเลย 6 ชั่วโมง
+- **Preview deploy** (ทุก branch/PR) ใช้ Redis ตัวเดียวกับ production ถ้าเชื่อม Upstash ให้ Preview ด้วย — รหัสห้องสุ่มจึงไม่ชนกันในทางปฏิบัติ
+- รันในเครื่องโดยใช้ Redis จริง: คัดลอก env จาก Vercel (`vercel env pull` หรือคัดลอกจากหน้า Settings → Environment Variables) ไปไว้ที่ `apps/web/.env.local` — ถ้าไม่ตั้ง dev server จะเก็บห้องในหน่วยความจำ

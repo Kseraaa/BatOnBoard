@@ -12,12 +12,13 @@
   "dependencies": {
     "@batonboard/engine": "workspace:*",
     "@batonboard/protocol": "workspace:*",
+    "@batonboard/rooms": "workspace:*",
     "@batonboard/spyfall": "workspace:*",
     "@batonboard/ui": "workspace:*",
+    "@upstash/redis": "^1.39.0",
     "next": "^16.4.2",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "socket.io-client": "^4.8.4"
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

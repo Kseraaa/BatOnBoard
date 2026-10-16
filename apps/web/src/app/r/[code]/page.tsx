@@ -67,7 +67,7 @@ export default function RoomPage() {
     router.push('/');
   }
 
-  if (notFound) {
+  if (notFound || (snap.lost && snap.code === code)) {
     return (
       <Centered>
         <p className="text-lg font-semibold">{t.room.notFound}</p>
@@ -79,12 +79,7 @@ export default function RoomPage() {
   if (snap.kicked && snap.code === code) {
     return (
       <Centered>
-        <p className="text-lg font-semibold">
-          {snap.kicked === 'kicked' ? t.room.kicked : t.room.replaced}
-        </p>
-        {snap.kicked === 'replaced' && (
-          <Button onClick={() => void client.reclaim()}>{t.room.reopenHere}</Button>
-        )}
+        <p className="text-lg font-semibold">{t.room.kicked}</p>
         <HomeLink label={t.room.goHome} />
       </Centered>
     );

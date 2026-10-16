@@ -1,53 +1,50 @@
-import type {
-  Ack,
-  ClientToServerEvents,
-  JoinedMessage,
-  KickedReason,
-  RoomStateMessage,
-  ServerToClientEvents,
-} from '@batonboard/protocol';
-import { io } from 'socket.io-client';
-import type { Socket } from 'socket.io-client';
+import { api } from '@batonboard/protocol';
+import type { Ack, JoinedMessage, RoomSnapshot, RoomStateMessage } from '@batonboard/protocol';
 import { storage } from './storage';
 
-type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
-
-export interface RoomSnapshot {
+export interface RoomSnapshotState {
+  /** คำขอล่าสุดถึง server สำเร็จไหม */
   connected: boolean;
-  /** ห้องที่ socket นี้เข้าอยู่ */
+  /** ห้องที่แท็บนี้อยู่ */
   code: string | null;
   playerId: string | null;
   room: RoomStateMessage | null;
   view: unknown;
-  /** serverNow - เวลาเครื่อง ตอนได้รับข้อความล่าสุด */
+  /** serverNow - เวลาเครื่อง (ชดเชยครึ่งหนึ่งของเวลาเดินทาง) */
   serverOffset: number;
-  kicked: KickedReason | null;
+  kicked: boolean;
+  /** ห้องหายไประหว่างเล่น (หมดอายุหรือทุกคนออก) */
+  lost: boolean;
 }
 
-const INITIAL: RoomSnapshot = {
-  connected: false,
+const INITIAL: RoomSnapshotState = {
+  connected: true,
   code: null,
   playerId: null,
   room: null,
   view: null,
   serverOffset: 0,
-  kicked: null,
+  kicked: false,
+  lost: false,
 };
 
-const ACK_TIMEOUT_MS = 8_000;
+/** ความถี่ poll ตอนเปิดหน้าจออยู่ / ตอนสลับไปแอปอื่น */
+const POLL_MS = Number(process.env.NEXT_PUBLIC_POLL_MS ?? 1_000);
+const HIDDEN_POLL_MS = 5_000;
+const REQUEST_TIMEOUT_MS = 8_000;
 
 /**
- * socket เดียวทั้งเว็บ — เปลี่ยนหน้าแล้วไม่หลุดห้อง
+ * สถานะห้องของแท็บนี้ — poll server เป็นระยะ (ไม่มี WebSocket เพราะรันบน Vercel)
  * ใช้กับ useSyncExternalStore ผ่าน subscribe/getSnapshot
  */
 export class RoomClient {
-  private snapshot: RoomSnapshot = INITIAL;
+  private snapshot: RoomSnapshotState = INITIAL;
   private readonly listeners = new Set<() => void>();
-  private socket: ClientSocket | null = null;
-  /** ชื่อที่ใช้ตอน join ครั้งล่าสุด — ใช้ส่งซ้ำตอนต่อใหม่ */
-  private lastName = '';
-
-  constructor(private readonly url: string) {}
+  private token: string | null = null;
+  private etag: string | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private polling = false;
+  private readonly joining = new Map<string, Promise<Ack<JoinedMessage>>>();
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -57,141 +54,185 @@ export class RoomClient {
   getSnapshot = () => this.snapshot;
   getServerSnapshot = () => INITIAL;
 
-  private set(patch: Partial<RoomSnapshot>) {
+  private set(patch: Partial<RoomSnapshotState>) {
     this.snapshot = { ...this.snapshot, ...patch };
     for (const l of this.listeners) l();
   }
 
-  private connect(): ClientSocket {
-    if (this.socket) return this.socket;
-    const socket: ClientSocket = io(this.url, { transports: ['websocket', 'polling'] });
-    this.socket = socket;
-
-    socket.on('connect', () => {
-      this.set({ connected: true });
-      // ต่อใหม่หลังเน็ตหลุด: กลับเข้าห้องเดิมด้วย token เดิม
-      const { code } = this.snapshot;
-      if (code && !this.snapshot.kicked) void this.join(code, this.lastName, true);
-    });
-    socket.on('disconnect', () => this.set({ connected: false }));
-    socket.on('room:state', (room) => {
-      this.set({
-        room,
-        serverOffset: room.serverNow - Date.now(),
-        ...(room.status === 'lobby' ? { view: null } : {}),
+  private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<Ack<T>> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res = await fetch(path, {
+        method,
+        signal: controller.signal,
+        cache: 'no-store',
+        headers: {
+          ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+          ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
       });
-    });
-    socket.on('game:view', (msg) => {
-      this.set({ view: msg.view, serverOffset: msg.serverNow - Date.now() });
-    });
-    socket.on('room:kicked', ({ reason }) => {
-      const { code } = this.snapshot;
-      if (code && reason === 'kicked') storage.clearSession(code);
-      this.set({ kicked: reason, room: null, view: null });
-    });
-    return socket;
+      const ack = (await res.json()) as Ack<T>;
+      if (!this.snapshot.connected) this.set({ connected: true });
+      return ack;
+    } catch {
+      this.set({ connected: false });
+      return { ok: false, error: 'not-connected' };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  private emit<T>(
-    send: (socket: ClientSocket, ack: (res: Ack<T>) => void) => void,
-  ): Promise<Ack<T>> {
-    const socket = this.connect();
-    return new Promise((resolve) => {
-      const timer = setTimeout(
-        () => resolve({ ok: false, error: 'not-connected' }),
-        ACK_TIMEOUT_MS,
-      );
-      send(socket, (res) => {
-        clearTimeout(timer);
-        resolve(res);
-      });
+  private apply(snap: RoomSnapshot, sentAt: number) {
+    const receivedAt = Date.now();
+    this.etag = snap.etag;
+    this.set({
+      room: snap.room,
+      view: snap.view,
+      serverOffset: snap.serverNow - (sentAt + receivedAt) / 2,
     });
   }
 
-  private remember(res: Ack<JoinedMessage>, name: string) {
-    if (!res.ok) return;
-    const { code, playerId, token } = res.value;
-    storage.setSession(code, { token, playerId });
-    this.lastName = name;
-    this.set({ code, playerId, kicked: null });
+  /** จัดการคำตอบที่บอกว่าเราไม่อยู่ในห้องแล้ว */
+  private handleGone(error: string): boolean {
+    if (error === 'kicked') {
+      if (this.snapshot.code) storage.clearSession(this.snapshot.code);
+      this.stopPolling();
+      this.set({ kicked: true, room: null, view: null });
+      return true;
+    }
+    if (error === 'room-not-found' || error === 'not-in-room') {
+      this.stopPolling();
+      this.set({ lost: true, room: null, view: null });
+      return true;
+    }
+    return false;
+  }
+
+  // ---- polling ----
+
+  private startPolling() {
+    if (this.polling) return;
+    this.polling = true;
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisibility);
+    }
+    void this.poll();
+  }
+
+  private stopPolling() {
+    this.polling = false;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibility);
+    }
+  }
+
+  private onVisibility = () => {
+    // กลับมาที่แท็บ — อัปเดตทันทีไม่ต้องรอรอบถัดไป
+    if (document.visibilityState === 'visible' && this.polling) {
+      if (this.timer) clearTimeout(this.timer);
+      void this.poll();
+    }
+  };
+
+  private poll = async () => {
+    const code = this.snapshot.code;
+    if (!this.polling || !code) return;
+    const sentAt = Date.now();
+    const query = this.etag ? `?etag=${encodeURIComponent(this.etag)}` : '';
+    const res = await this.request<RoomSnapshot | null>('GET', `${api.poll(code)}${query}`);
+    if (!this.polling || this.snapshot.code !== code) return;
+    if (res.ok) {
+      if (res.value) this.apply(res.value, sentAt);
+    } else if (this.handleGone(res.error)) {
+      return;
+    }
+    const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    this.timer = setTimeout(this.poll, hidden ? HIDDEN_POLL_MS : POLL_MS);
+  };
+
+  // ---- คำสั่ง ----
+
+  private enter(joined: JoinedMessage) {
+    storage.setSession(joined.code, { token: joined.token, playerId: joined.playerId });
+    this.token = joined.token;
+    this.etag = null;
+    this.set({
+      code: joined.code,
+      playerId: joined.playerId,
+      kicked: false,
+      lost: false,
+      room: null,
+      view: null,
+    });
+    this.startPolling();
   }
 
   async create(name: string, gameId: string): Promise<Ack<JoinedMessage>> {
-    await this.leaveCurrent();
-    const res = await this.emit<JoinedMessage>((s, ack) =>
-      s.emit('room:create', { name, gameId }, ack),
-    );
-    this.remember(res, name);
+    this.stopPolling();
+    const res = await this.request<JoinedMessage>('POST', api.create(), { name, gameId });
+    if (res.ok) this.enter(res.value);
     return res;
   }
 
-  /** เข้าห้อง (หรือกลับเข้าห้องเดิมด้วย token ที่เก็บไว้) — เรียกซ้ำระหว่างรอได้ promise เดิม */
-  join(code: string, name: string, isReconnect = false): Promise<Ack<JoinedMessage>> {
+  /** เข้าห้อง หรือกลับเข้าห้องเดิมด้วย token ที่เก็บไว้ — เรียกซ้ำระหว่างรอได้ promise เดิม */
+  join(code: string, name: string): Promise<Ack<JoinedMessage>> {
     const upper = code.toUpperCase();
     const pending = this.joining.get(upper);
     if (pending) return pending;
-    const promise = this.doJoin(upper, name, isReconnect).finally(() => this.joining.delete(upper));
+    const promise = this.doJoin(upper, name).finally(() => this.joining.delete(upper));
     this.joining.set(upper, promise);
     return promise;
   }
 
-  private readonly joining = new Map<string, Promise<Ack<JoinedMessage>>>();
-
-  private async doJoin(
-    upper: string,
-    name: string,
-    isReconnect: boolean,
-  ): Promise<Ack<JoinedMessage>> {
-    if (!isReconnect && this.snapshot.code !== upper) await this.leaveCurrent();
-    const session = storage.getSession(upper);
-    const res = await this.emit<JoinedMessage>((s, ack) =>
-      s.emit(
-        'room:join',
-        { code: upper, name: name || 'player', ...(session ? { token: session.token } : {}) },
-        ack,
-      ),
-    );
-    // already-in-room = socket นี้อยู่ห้องนี้แล้ว (เช่นเพิ่งสร้างห้อง)
-    if (!res.ok && res.error === 'already-in-room' && this.snapshot.code === upper && session) {
-      return { ok: true, value: { code: upper, ...session } };
-    }
-    this.remember(res, name);
+  private async doJoin(code: string, name: string): Promise<Ack<JoinedMessage>> {
+    if (this.snapshot.code !== code) this.stopPolling();
+    const session = storage.getSession(code);
+    const res = await this.request<JoinedMessage>('POST', api.join(code), {
+      name: name || 'player',
+      ...(session ? { token: session.token } : {}),
+    });
+    if (res.ok) this.enter(res.value);
     return res;
-  }
-
-  /** แท็บนี้ถูกแทนที่ — กดใช้แท็บนี้ต่อ */
-  async reclaim(): Promise<Ack<JoinedMessage>> {
-    const { code } = this.snapshot;
-    if (!code) return { ok: false, error: 'not-in-room' };
-    this.set({ kicked: null });
-    const socket = this.connect();
-    if (!socket.connected) socket.connect();
-    return this.join(code, this.lastName, true);
-  }
-
-  private async leaveCurrent() {
-    if (!this.snapshot.code) return;
-    await this.emit((s, ack) => s.emit('room:leave', ack));
-    this.set({ code: null, playerId: null, room: null, view: null });
   }
 
   async leave(): Promise<void> {
     const { code } = this.snapshot;
-    await this.leaveCurrent();
-    if (code) storage.clearSession(code);
+    if (!code) return;
+    this.stopPolling();
+    await this.request('POST', api.leave(code));
+    storage.clearSession(code);
+    this.token = null;
+    this.set({ code: null, playerId: null, room: null, view: null });
   }
 
-  start = () => this.emit((s, ack) => s.emit('room:start', ack));
-  backToLobby = () => this.emit((s, ack) => s.emit('room:lobby', ack));
-  updateSettings = (options: unknown) =>
-    this.emit((s, ack) => s.emit('room:settings', { options }, ack));
-  kick = (playerId: string) => this.emit((s, ack) => s.emit('room:kick', { playerId }, ack));
-  action = (payload: unknown) => this.emit((s, ack) => s.emit('game:action', payload, ack));
+  /** คำสั่งที่ server ตอบกลับเป็น snapshot ล่าสุด — อัปเดตจอทันทีไม่ต้องรอ poll */
+  private async command(path: (code: string) => string, body?: unknown): Promise<Ack<null>> {
+    const { code } = this.snapshot;
+    if (!code) return { ok: false, error: 'not-in-room' };
+    const sentAt = Date.now();
+    const res = await this.request<RoomSnapshot>('POST', path(code), body);
+    if (res.ok) {
+      this.apply(res.value, sentAt);
+      return { ok: true, value: null };
+    }
+    this.handleGone(res.error);
+    return res;
+  }
+
+  start = () => this.command(api.start);
+  backToLobby = () => this.command(api.lobby);
+  updateSettings = (options: unknown) => this.command(api.settings, { options });
+  kick = (playerId: string) => this.command(api.kick, { playerId });
+  action = (payload: unknown) => this.command(api.action, payload);
 }
 
 let client: RoomClient | null = null;
 
 export function getRoomClient(): RoomClient {
-  client ??= new RoomClient(process.env.NEXT_PUBLIC_SERVER_URL ?? 'http://localhost:4000');
+  client ??= new RoomClient();
   return client;
 }

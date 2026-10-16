@@ -12,8 +12,8 @@
 
 1. **Server เป็นผู้ตัดสินทุกอย่าง** — client ส่งแค่ action ห้ามคำนวณผลเกมฝั่ง client
 2. **ข้อมูลลับไม่ออกจาก server** — ห้ามส่ง game state เต็มไป client ทุกครั้งที่ส่งข้อมูลเกมต้องผ่าน `playerView(state, viewerId)` และส่งแยกรายผู้เล่น ห้าม broadcast state เดียวให้ทั้งห้อง
-3. **กติกาเป็นโค้ดบริสุทธิ์** — โค้ดใน `packages/games/*/rules` ห้าม import socket, fastify, DB หรือ React ห้ามเรียก `Math.random()` หรือ `Date.now()` ให้ใช้ `rng` และ `now` ที่ถูกส่งเข้ามา
-4. **Platform ไม่รู้จักกติกาเกม** — `apps/server` และ `packages/engine` ห้ามมีโค้ดเฉพาะเกมใดเกมหนึ่ง การเพิ่มเกมใหม่ต้องทำได้ด้วยการเพิ่มโฟลเดอร์ใน `packages/games/` และลงทะเบียนใน registry เท่านั้น
+3. **กติกาเป็นโค้ดบริสุทธิ์** — โค้ดใน `packages/games/*/rules` ห้าม import network, DB หรือ React ห้ามเรียก `Math.random()` หรือ `Date.now()` ให้ใช้ `rng` และ `now` ที่ถูกส่งเข้ามา
+4. **Platform ไม่รู้จักกติกาเกม** — `packages/engine`, `packages/rooms` และ API ของ `apps/web` ห้ามมีโค้ดเฉพาะเกมใดเกมหนึ่ง การเพิ่มเกมใหม่ต้องทำได้ด้วยการเพิ่มโฟลเดอร์ใน `packages/games/` และลงทะเบียนใน registry เท่านั้น
 5. **ห้ามเชื่อ input จาก client** — ทุก payload ต้องผ่าน Zod schema ก่อนเข้า `validate`
 
 ---
@@ -25,13 +25,13 @@
 | ภาษา | TypeScript (strict) ทั้งระบบ |
 | Monorepo | pnpm workspaces |
 | Frontend | Next.js (App Router) + React + Tailwind CSS + shadcn/ui |
-| Game server | Node.js + Fastify + Socket.IO (แยก process จากเว็บ) |
+| Game server | Next.js Route Handlers ใน `apps/web` (serverless บน Vercel) + polling ~1 วินาที ไม่มี WebSocket |
 | ตรวจ input | Zod |
-| State ห้อง | in-memory (MVP) — Redis adapter ภายหลังเมื่อมีหลาย instance |
+| State ห้อง | Upstash Redis (production) · หน่วยความจำของ `next dev` (dev/e2e) |
 | Database | ยังไม่ใช้ใน MVP — เฟส 2: PostgreSQL + Drizzle ORM |
 | ผู้เล่น | guest: ชื่อเล่น + `playerToken` แบบสุ่ม ไม่มีระบบสมัครใน MVP |
 | Testing | Vitest (unit) + Playwright (e2e หลายผู้เล่น) |
-| Deploy | เว็บ: Vercel · game server: Fly.io หรือ Railway (เครื่องเดียว รันตลอด) |
+| Deploy | Vercel อย่างเดียว (เว็บ + API) + Upstash Redis จาก Vercel Marketplace |
 
 ---
 
@@ -40,11 +40,11 @@
 ```
 batonboard/
 ├─ apps/
-│  ├─ web/              # Next.js: หน้าแรก, เลือกเกม, ล็อบบี้, หน้าเล่น
-│  └─ server/           # Fastify + Socket.IO: ห้อง, การเชื่อมต่อ, timer
+│  └─ web/              # Next.js: หน้าเว็บ + API ห้อง (src/app/api, src/server)
 ├─ packages/
 │  ├─ engine/           # GameDefinition, type กลาง, game runner, registry
-│  ├─ protocol/         # event Socket.IO + Zod schema ที่ web กับ server ใช้ร่วม
+│  ├─ rooms/            # logic ห้องแบบบริสุทธิ์ + RoomService + RoomStore
+│  ├─ protocol/         # HTTP API + Zod schema ที่ฝั่ง client และ server ใช้ร่วม
 │  ├─ ui/               # component ใช้ร่วม (ปุ่ม, การ์ด, นาฬิกา)
 │  └─ games/
 │     └─ spyfall/
@@ -94,9 +94,9 @@ export interface GameDefinition<State, Action, View, Options = unknown> {
 ### Action pipeline (server)
 
 ```
-socket 'game:action' → actionSchema.parse → validate → apply
-→ ตั้ง timeout ใหม่จาก nextDeadline
-→ ส่ง 'game:view' = playerView(state, p) แยกให้ผู้เล่นแต่ละคน
+POST /api/rooms/<code>/action → โหลดห้อง → tick (deadline ที่เลยมาแล้ว)
+→ actionSchema.parse → validate → apply → เขียนกลับ (compare-and-set)
+→ ตอบ snapshot = playerView(state, ผู้ส่ง) · คนอื่นได้ view ของตัวเองตอน poll
 ```
 
 engine มี pipeline นี้เป็นฟังก์ชันบริสุทธิ์ใน `runner.ts` server ใช้ฟังก์ชันเหล่านี้ ไม่เรียก method ของเกมเอง:
@@ -105,13 +105,13 @@ engine มี pipeline นี้เป็นฟังก์ชันบริส
 | --- | --- |
 | `startGame(game, players, rawOptions, rng, now)` | ตรวจจำนวนผู้เล่น ชื่อซ้ำ และ `optionsSchema` แล้วเรียก `setup` |
 | `dispatchAction(game, state, payload, by, ctx, now, rng)` | ตรวจว่าเกมยังไม่จบ → `safeParse` → `validate` → `apply` คืน `Result<State>` |
-| `getDeadline(game, state)` | เวลาที่ต้องตั้ง timeout (เป็น `null` เมื่อเกมจบ) |
-| `fireDeadline(game, state, now)` | เรียก `onDeadline` เฉพาะเมื่อถึงเวลาจริง ถ้ายังไม่ถึงคืน object เดิม (กัน timer เก่า) |
+| `getDeadline(game, state)` | deadline ถัดไป (เป็น `null` เมื่อเกมจบ) |
+| `fireDeadline(game, state, now)` | เรียก `onDeadline` เฉพาะเมื่อถึงเวลาจริง ถ้ายังไม่ถึงคืน object เดิม |
 | `removePlayer(game, state, player, now)` | เรียก `onPlayerLeave` |
 | `viewsFor(game, state, viewers)` | `Map<PlayerId, View>` แยกรายคน |
 
 - รหัส error ของ engine อยู่ใน `EngineError`: `invalid-action`, `invalid-options`, `too-few-players`, `too-many-players`, `duplicate-players`, `game-over` ส่วนรหัสของแต่ละเกมกำหนดใน `validate` และ client เป็นคนแปลรหัสเป็นข้อความ
-- `createRng(seed)` ใช้อัลกอริทึม mulberry32 server สุ่ม seed จาก `crypto` และใช้ rng หนึ่งตัวต่อห้อง
+- `createRng(seed)` ใช้อัลกอริทึม mulberry32 ห้องสุ่ม seed ลับจาก `crypto` ตอนสร้าง แล้วแต่ละคำสั่งใช้ rng ที่ได้จาก seed กับ `version` ของห้อง จึงไม่ต้องเก็บสถานะ rng
 - `createRegistry()` เป็น factory ไม่ใช่ singleton ห้าม id ซ้ำ และตรวจช่วงจำนวนผู้เล่น
 
 ---
@@ -167,7 +167,7 @@ type SpyfallAction =
   | { type: 'SPY_GUESS'; locationId: string }     // สายลับเท่านั้น
   | { type: 'NEXT_ROUND' };                       // host เท่านั้น (phase reveal)
 // เริ่มรอบแรก = room:start → setup() ไม่มี START_ROUND
-// หมดเวลา = onDeadline() ที่ server เรียกเอง ไม่ใช่ action จาก client
+// หมดเวลา = onDeadline() ที่ server เรียกเอง (ตอนมี request หลัง deadline) ไม่ใช่ action จาก client
 ```
 
 ### playerView — ใครเห็นอะไร
@@ -184,16 +184,17 @@ type SpyfallAction =
 
 ---
 
-## Real-time และห้อง (`apps/server`)
+## Real-time และห้อง (`packages/rooms` + `apps/web/src/app/api`)
 
 - **ห้อง:** รหัส 6 ตัวอักษร (ตัด 0/O/1/I ที่สับสนง่าย) เข้าร่วมผ่าน `/r/<code>` คนสร้างห้องเป็น host: เริ่มเกม เปลี่ยนตั้งค่า เตะผู้เล่น ถ้า host ออก ให้โอนสิทธิ์ให้คนถัดไป
-- **ตัวตน:** ครั้งแรก server ออก `playerToken` แบบสุ่ม client เก็บไว้ เมื่อรีเฟรช/เน็ตหลุด ส่ง token เดิม → server ผูกกับผู้เล่นเดิมและส่ง view ปัจจุบันทันที
-- **หลุดการเชื่อมต่อ:** ไม่ลบผู้เล่นทันที แสดงสถานะ "ออฟไลน์" ให้ host เลือกเตะได้
-- **Timer:** server เก็บ `deadline` และตั้ง timeout ของตัวเองเพื่อเรียก `onDeadline` ส่ง `serverNow` ไปกับทุก view ให้ client คำนวณนับถอยหลังโดยชดเชยนาฬิกาเครื่อง
-- **Events** (type และ schema อยู่ใน `@batonboard/protocol`):
-  - client → server: `room:create`, `room:join`, `room:leave`, `room:settings`, `room:start`, `room:lobby` (host พากลับล็อบบี้), `room:kick`, `game:action`
-  - server → client: `room:state` (รายชื่อ, host, ตั้งค่า, สถานะออนไลน์), `game:view` (`{ view, serverNow }`), `room:kicked` (`kicked` | `replaced`), `error`
-  - ทุก event ฝั่ง client ส่ง ack ได้: `{ ok: true, value } | { ok: false, error: <รหัส> }` ถ้าไม่ส่ง ack แล้วไม่สำเร็จ server ส่ง event `error` `{ code }` กลับไปแทน
+- **ตัวตน:** ตอนสร้างหรือเข้าห้อง server ออก `playerToken` แบบสุ่ม client เก็บไว้และส่ง `Authorization: Bearer <token>` ทุก request เมื่อรีเฟรชหรือเน็ตหลุด ส่ง token เดิมใน `join` → ผูกกับผู้เล่นเดิม
+- **ไม่มี WebSocket:** client poll `GET /api/rooms/<code>?etag=…` ทุก ~1 วินาที (5 วินาทีเมื่อแท็บถูกซ่อน) server ตอบ `null` ถ้า etag ไม่เปลี่ยน คำสั่งทุกตัวตอบ snapshot ล่าสุดทันที
+- **ออนไลน์/ออฟไลน์:** ดูจากเวลาล่าสุดที่ผู้เล่น poll (`lastSeen`) ไม่ได้ยินเกิน 15 วินาที = ออฟไลน์ ไม่ลบผู้เล่นทันที host เลือกเตะได้
+- **Timer แบบ lazy:** ไม่มี timer บน server ทุก request เรียก `tick()` ซึ่งเรียก `onDeadline` ณ เวลา deadline จริงของทุก deadline ที่เลยมาแล้ว ส่ง `serverNow` ไปกับทุก snapshot ให้ client นับถอยหลังโดยชดเชยนาฬิกาเครื่อง
+- **API** (path และ type อยู่ใน `api` ของ `@batonboard/protocol` ทุกคำตอบเป็น `Ack<T>` = `{ ok: true, value } | { ok: false, error: <รหัส> }`):
+  - `POST /api/rooms` สร้างห้อง · `POST /api/rooms/<code>/join` เข้าหรือกลับเข้าห้อง → `JoinedMessage { code, playerId, token }`
+  - `GET /api/rooms/<code>` poll → `RoomSnapshot { etag, room, view, serverNow } | null`
+  - `POST /api/rooms/<code>/{leave,settings,start,lobby,kick,action}` → `RoomSnapshot`
 
 ---
 
@@ -228,9 +229,9 @@ type SpyfallAction =
 - ข้อความ UI ทั้งหมดอยู่ในไฟล์ข้อความแยก (เตรียมรองรับไทย/อังกฤษ) ภาษาเริ่มต้นคือภาษาไทย
 - ออกแบบ mobile-first: ผู้เล่นส่วนใหญ่ใช้มือถือ ปุ่มสำคัญต้องกดง่ายด้วยนิ้วเดียว
 - หน้าบทบาทต้องซ่อนได้ (กดค้างเพื่อดู หรือปุ่มซ่อน) เพราะคนข้าง ๆ อาจมองเห็นจอ
-- CORS ของ game server รับเฉพาะโดเมนเว็บของโปรเจกต์ มี endpoint `/health`
+- API อยู่โดเมนเดียวกับเว็บ (same-origin) จึงไม่ต้องตั้ง CORS
 - รัน `pnpm test`, `pnpm typecheck` และ `pnpm lint` ให้ผ่านก่อนจบทุกงาน ถ้าแก้ UI หรือ flow ของห้องให้รัน `pnpm e2e` ด้วย
-- CI (GitHub Actions, `.github/workflows/ci.yml`) รันเมื่อ push ไป `main` และทุก pull request มี 2 job: `check` (typecheck, lint, format:check, test และ build bundle ของ server) กับ `e2e` (Playwright บน Chromium) ถ้าเพิ่มคำสั่งตรวจใหม่ ให้เพิ่มใน workflow ด้วย
+- CI (GitHub Actions, `.github/workflows/ci.yml`) รันเมื่อ push ไป `main` และทุก pull request มี 2 job: `check` (typecheck, lint, format:check, test และ `next build` ของเว็บ) กับ `e2e` (Playwright บน Chromium) ถ้าเพิ่มคำสั่งตรวจใหม่ ให้เพิ่มใน workflow ด้วย
 
 ---
 
@@ -240,20 +241,21 @@ type SpyfallAction =
 
 1. **สิทธิ์ host:** ห้องเป็นเจ้าของข้อมูล host แล้วส่ง `ctx: { hostId }` เข้า `validate` เกมใช้ข้อมูลนี้ตรวจ action ที่ host เท่านั้นทำได้ (เช่น `NEXT_ROUND`) แพลตฟอร์มไม่ต้องรู้ว่า action ไหนเป็นของ host
 2. **ไม่มี phase `lobby` ในเกม:** ล็อบบี้เป็นสถานะของห้อง `room:start` เรียก `setup()` แล้วเข้า `questioning` ทันที ตัด `START_ROUND` ออก `NEXT_ROUND` (ทำได้ใน `reveal`) สุ่มสายลับ สถานที่ และบทบาทใหม่ด้วย `rng` ที่ส่งเข้า `apply`
-3. **รายชื่อสถานที่อ้างอิงไม่อยู่ใน view:** client import รายชื่อจาก `spyfall/data` แบบ static ส่วน `playerView` ส่งแค่ `locationSetId` เพื่อให้เทสต์ "view ของสายลับไม่มี id สถานที่ปัจจุบัน" เป็นจริงได้ ถ้าเฟส 2 มีชุดสถานที่ที่ผู้เล่นสร้างเอง ให้ส่งรายชื่อผ่าน `room:state` ซึ่งเป็นข้อมูลสาธารณะ ไม่ส่งใน view
+3. **รายชื่อสถานที่อ้างอิงไม่อยู่ใน view:** client import รายชื่อจาก `spyfall/data` แบบ static ส่วน `playerView` ส่งแค่ `locationSetId` เพื่อให้เทสต์ "view ของสายลับไม่มี id สถานที่ปัจจุบัน" เป็นจริงได้ ถ้าเฟส 2 มีชุดสถานที่ที่ผู้เล่นสร้างเอง ให้ส่งรายชื่อผ่าน `room` ใน snapshot ซึ่งเป็นข้อมูลสาธารณะ ไม่ส่งใน view
 4. **กลไก `final-vote`:** ผู้เล่นทุกคนได้สิทธิ์ใหม่ 1 ครั้งในช่วงนี้ (ไม่สน `usedAccusation`) จะ `ACCUSE` หรือ `PASS` ก็ได้ เมื่อมีคนเสนอชื่อ จะเข้าโหวตเอกฉันท์เหมือนช่วงปกติ ถ้าผ่านก็ไป `reveal` ถ้าไม่ผ่านก็กลับ `final-vote` เมื่อทุกคนใช้สิทธิ์ครบ (`finalTurns` ครบ) แล้วยังไม่มีใครถูกจับ สายลับชนะ สายลับเดาสถานที่ใน `final-vote` ไม่ได้
 5. **ใครต้องโหวต:** ผู้กล่าวหาถือว่าเห็นด้วยอัตโนมัติ ผู้ถูกกล่าวหาโหวตไม่ได้ ผู้เล่นที่เหลือต้องโหวต ถ้าโหวตไม่ผ่าน ผู้กล่าวหาเสียสิทธิ์ของรอบนั้น ถ้ามีคนกด "ไม่เห็นด้วย" ให้ตัดสินว่าไม่ผ่านทันทีโดยไม่ต้องรอคนที่เหลือ
 6. **ผู้เล่นหลุดหรือถูกเตะกลางเกม:**
    - โหวตแต่ละครั้งมีเวลา 60 วินาที (`vote.deadline` ผ่าน `nextDeadline`/`onDeadline`) ถ้าหมดเวลาแล้วยังมีคนไม่โหวต ถือว่าไม่ผ่าน
    - ถ้าผู้เล่นถูกเตะหรือออก server เรียก `onPlayerLeave` ถ้าคนที่ออกเป็นสายลับ ฝ่ายผู้เล่นชนะ ถ้าผู้เล่นเหลือน้อยกว่า `minPlayers` จบรอบโดยไม่มีผู้ชนะ (`reason: 'not-enough-players'`) นอกจากนั้นให้ตัดคนที่ออกออกจากการโหวตแล้วตัดสินโหวตใหม่
-7. **ชื่อผู้เล่น:** state ของเกมเก็บแค่ `PlayerId` ส่วนชื่อมาจาก `room:state` แล้ว client เอามารวมกันเอง
+7. **ชื่อผู้เล่น:** state ของเกมเก็บแค่ `PlayerId` ส่วนชื่อมาจาก `room` ใน snapshot แล้ว client เอามารวมกันเอง
+8. **Vercel อย่างเดียว (2026-10-16):** เลิกใช้ `apps/server` (Fastify + Socket.IO บน Fly.io) เพื่อให้ deploy ฟรีบน Vercel ที่เดียว ห้องเก็บใน Upstash Redis และส่ง view ด้วย polling แทน WebSocket (ช้าสุด ~1 วินาที พอสำหรับเกมที่คุยกันนอกระบบ) กฎสถาปัตยกรรมทั้ง 5 ข้อยังเหมือนเดิม โค้ดเดิมดูได้ใน git ที่ commit `9bd009a`
 
 ### Monorepo
 
-- package ทั้งหมด export ซอร์ส TypeScript ตรง ๆ (`"exports": "./src/index.ts"`) ไม่ต้อง build ตอนพัฒนา web ใช้ `transpilePackages` ส่วน server รันด้วย `tsx` และ bundle ด้วย `tsup` ตอน deploy
+- package ทั้งหมด export ซอร์ส TypeScript ตรง ๆ (`"exports": "./src/index.ts"`) ไม่ต้อง build ตอนพัฒนา web ใช้ `transpilePackages`
 - `pnpm typecheck` = `tsc --noEmit` ในทุก package ผ่าน `pnpm -r`
 - `pnpm test` = Vitest ที่ root โดยแต่ละ package เป็น project ของตัวเอง (`vitest.config.ts`)
-- `pnpm lint` บังคับกฎสถาปัตยกรรมข้อ 3–4 ด้วย ESLint: โฟลเดอร์ `rules/` ห้าม import socket/fastify/React/DB/Node และห้ามใช้ `Math.random`, `Date.now`, `new Date()` ส่วน `engine` ห้าม import เกมใด ๆ
+- `pnpm lint` บังคับกฎสถาปัตยกรรมข้อ 3–4 ด้วย ESLint: โฟลเดอร์ `rules/` ห้าม import socket/fastify/React/DB/Node และห้ามใช้ `Math.random`, `Date.now`, `new Date()` ส่วน `engine` และ `rooms` (ยกเว้นไฟล์เทสต์) ห้าม import เกมใด ๆ
 - **ห้ามใช้ `pnpm -s typecheck`** เพราะ `-s` ร่วมกับ `-r --parallel` ซ่อน error ของ tsc ให้ดู exit code หรือรันแบบไม่มี `-s` แทน
 - เวอร์ชัน: Node 24, pnpm 10, TypeScript **6.0** (ยังไม่ใช้ 7 เพราะ typescript-eslint รองรับแค่ `<6.1`) ใน TS 6 ค่าเริ่มต้นของ `types` คือ `[]` ดังนั้น package ไหนต้องใช้ Node API ให้ใส่ `"types": ["node"]` เอง
 
@@ -273,22 +275,21 @@ type SpyfallAction =
 
 - ชุด `batonboard-original-v1` (`data/original-v1.ts`) มี 26 สถานที่ แห่งละ 7 บทบาท มีชื่อทั้งไทยและอังกฤษ (`LocalizedText`) ส่วนใหญ่เป็นสถานที่ในชีวิตคนไทย
 - `data/` เก็บชื่อที่แสดง แต่กติกาเห็นแค่ id (ผ่าน `toLocationDefs`) client หาชุดสถานที่จาก `locationSetId` ใน view ด้วย `getLocationSet`
-- `@batonboard/spyfall` (root `index.ts`) export ตัวแปร `spyfall` ที่สร้างจากชุดเริ่มต้นแล้ว เป็นตัวที่ server ใช้ลงทะเบียนใน registry
+- `@batonboard/spyfall` (root `index.ts`) export ตัวแปร `spyfall` ที่สร้างจากชุดเริ่มต้นแล้ว เป็นตัวที่ `apps/web/src/server/service.ts` ใช้ลงทะเบียนใน registry
 - `data.test.ts` ตรวจว่ามีอย่างน้อย 20 สถานที่ id เป็น slug ชื่อไม่ซ้ำ บทบาทพอ 7 อย่าง มีชื่อไทย/อังกฤษครบ และ**ไม่ตรงกับสถานที่ของเกมต้นฉบับ** (เทียบกับรายการห้ามใช้ที่อยู่ในไฟล์เทสต์เท่านั้น ห้ามย้ายรายการนี้ไปไว้ใน data หรือ UI)
 - จะเพิ่มชุดใหม่ ให้สร้างไฟล์ใน `data/` แล้วเพิ่มใน `locationSets` เทสต์ทุกข้อจะรันกับทุกชุดอัตโนมัติ
 
-### Game server (`apps/server`)
+### ห้อง (`packages/rooms`) และ API
 
-- `RoomManager` (`rooms.ts`) ไม่รู้จัก socket และไม่รู้จักกติกาเกมใด ได้ `Transport`, `Scheduler`, `IdSource` และ `now` มาจากข้างนอก เทสต์จึงใช้ของปลอมจาก `testing.ts` เดินเวลาเองได้ ส่วน `app.ts` เป็นแค่ตัวต่อ Socket.IO เข้ากับ `RoomManager`
-- `games.ts` เป็นที่เดียวใน server ที่อ้างชื่อเกม (ใช้ลงทะเบียนใน registry)
-- **ตัวตน:** `playerId` เป็นข้อมูลสาธารณะ (อยู่ใน `room:state` และ view) ส่วน `playerToken` เป็นความลับ ห้ามออกไปนอก ack ของเจ้าของ token ผูกกับห้องเดียว (client เก็บแยกตามรหัสห้อง) สร้างจาก `crypto` (24 byte)
-- **กลับเข้าห้อง:** `room:join` ที่มี `token` ตรงกับผู้เล่นในห้อง = ผู้เล่นคนเดิม (ใช้ชื่อเดิม) และได้ view ปัจจุบันทันที ถ้ามีแท็บเก่าค้างอยู่ แท็บเก่าจะได้ `room:kicked { reason: 'replaced' }` แล้วถูกตัด ถ้า token ไม่ตรงก็เข้าเป็นผู้เล่นใหม่
-- **ห้อง:** จำนวนคนในห้องไม่เกิน `maxPlayers` ของเกม ชื่อห้ามซ้ำโดยไม่สนตัวพิมพ์ (ยาว 1–20 ตัว) คนที่เข้ามากลางเกมจะเห็น view แบบ `spectator` และได้เล่นรอบถัดไปหลังกลับล็อบบี้
-- **host:** ถ้า host ออกหรือถูกลบ โอนให้คนถัดไปตามลำดับการเข้าห้องที่ออนไลน์อยู่ ถ้า host ออฟไลน์เกิน 30 วินาที (`HOST_GRACE_MS`) ก็โอนเหมือนกัน host เตะตัวเองไม่ได้
-- **ลบห้อง:** เมื่อคนสุดท้ายออก หรือทุกคนออฟไลน์เกิน 10 นาที (`ROOM_IDLE_MS`)
-- **timer:** หนึ่งตัวต่อห้อง (`deadline:<code>`) ตั้งใหม่ทุกครั้งที่ state เปลี่ยน ถ้า timer มาก่อนเวลา `fireDeadline` ไม่ทำอะไรแล้วตั้ง timer ใหม่
-- จำกัดขนาด payload ของ Socket.IO ที่ 16 KB ยังไม่มี rate limit (ทำในเฟส deploy ถ้าจำเป็น)
-- รัน: `pnpm --filter @batonboard/server dev` (tsx watch) env ดูได้ที่ `apps/server/.env.example` (`PORT`, `HOST`, `WEB_ORIGIN` คั่นด้วย comma)
+- `room.ts`: ห้องเป็น JSON ก้อนเดียว (`Room`) ทุกคำสั่งเป็นฟังก์ชันบริสุทธิ์ `(env, room, …) → Ack<Room>` ไม่รู้จัก HTTP, Redis หรือเกมใด (ได้ registry, `IdSource` และ `now` จาก `env`)
+- `service.ts` (`RoomService`): ทุก request ทำ โหลด → `tick` → `authorize` → คำสั่ง → `store.put` แบบ compare-and-set ด้วย `rev` ถ้ามีคนเขียนก่อนก็ลองใหม่ (สูงสุด 5 ครั้ง แล้วตอบ `busy`)
+- `version` เพิ่มเมื่อสิ่งที่ผู้เล่นเห็นเปลี่ยน (ใช้ทำ etag) ส่วน `rev` เพิ่มทุกครั้งที่เขียน รวมถึง `touch` ที่อัปเดต `lastSeen` ไม่บ่อยกว่าทุก 5 วินาที เพื่อลดการเขียน
+- store: `MemoryRoomStore` (เทสต์, dev, e2e — ตรวจและเขียนใน tick เดียวกัน) และ `UpstashRoomStore` (`apps/web/src/server/upstash-store.ts` — Lua script ทำ CAS) ห้องหมดอายุเมื่อไม่มีใครแตะ 6 ชั่วโมง (`ROOM_TTL_SECONDS`)
+- **ตัวตน:** `playerId` เป็นข้อมูลสาธารณะ ส่วน token เป็นความลับ store เก็บแค่ SHA-256 ของ token ผู้เล่นที่ถูกเตะได้ error `kicked` แท็บสองแท็บที่ใช้ token เดียวกันเป็นผู้เล่นคนเดียวกันและใช้ได้พร้อมกัน
+- **ห้อง:** จำนวนคนไม่เกิน `maxPlayers` ของเกม ชื่อห้ามซ้ำโดยไม่สนตัวพิมพ์ (ยาว 1–20 ตัว) คนที่เข้ามากลางเกมเห็น view แบบ `spectator`
+- **host:** ออกหรือถูกลบ = โอนให้คนถัดไปที่ออนไลน์ ออฟไลน์เกิน 30 วินาที (`HOST_GRACE_MS`) = โอนตอนมี request ถัดไป
+- API: `apps/web/src/app/api/rooms/**/route.ts` เป็นแค่ตัวต่อ (อ่าน URL, Bearer และ JSON แล้วส่งให้ `RoomService`) จำกัด body 16 KB และตอบ `Cache-Control: no-store` ส่วน `apps/web/src/server/service.ts` เป็นที่เดียวฝั่ง server ที่อ้างชื่อเกม
+- บน Vercel ถ้าไม่ได้ตั้ง Upstash env จะ throw ทันที (เก็บในหน่วยความจำไม่ได้เพราะแต่ละ request อาจไปคนละเครื่อง)
 
 ### Web (`apps/web`) และหน้าจอเกม
 
@@ -296,14 +297,14 @@ type SpyfallAction =
 - `packages/ui/src/game-client.ts` เป็นสัญญาระหว่างเว็บกับหน้าจอเกม: `GameClient` มี `Screen` (ได้ `view: unknown` แล้วแปลง type เอง), `Settings`, ชื่อ และจำนวนผู้เล่น เว็บลงทะเบียนเกมที่ `apps/web/src/games.ts` ที่เดียว
 - ชื่อเกมที่แสดง `GAME_DISPLAY_NAME` อยู่ใน `packages/games/spyfall/client/messages.ts` ตอนนี้คือ "ใครคือสายลับ" / "Who's the Spy?" ข้อความของเกมอยู่ในไฟล์นั้น ข้อความของแพลตฟอร์มอยู่ที่ `apps/web/src/messages/{th,en}.ts` (เทสต์ตรวจว่า key ตรงกันและครอบคลุมรหัส error ทุกตัว)
 - client import ค่าคงที่จาก `rules/constants.ts` และ type จาก `rules/types.ts` เท่านั้น ไม่ import `rules/game.ts` เพื่อไม่ให้ zod ติดไปใน bundle
-- **socket:** มีตัวเดียวทั้งเว็บ (`lib/room-client.ts` ใช้กับ `useSyncExternalStore`) เปลี่ยนหน้าแล้วไม่หลุดห้อง ถ้าต่อใหม่จะ `room:join` ด้วย token เดิมเอง `serverOffset = serverNow - Date.now()` ใช้กับ `Countdown`
-- **localStorage:** `batonboard:name` เก็บชื่อเล่น และ `batonboard:room:<CODE>` เก็บ `{ token, playerId }` เปิดห้องเดิมในแท็บที่สองของเบราว์เซอร์เดียวกันจะได้ตัวตนเดิม แท็บแรกจะได้ข้อความว่า "เปิดในแท็บอื่นแล้ว" พร้อมปุ่ม "ใช้แท็บนี้แทน" ถ้าจะทดสอบหลายผู้เล่นในเครื่องเดียวต้องใช้ browser context แยก
+- **การเชื่อมต่อ:** `lib/room-client.ts` (ใช้กับ `useSyncExternalStore`) poll ห้องของแท็บนี้ เปลี่ยนหน้าแล้วไม่หลุด ความถี่ตั้งด้วย `NEXT_PUBLIC_POLL_MS` (ค่าเริ่มต้น 1000) `serverOffset = serverNow - เวลากึ่งกลางของ request` ใช้กับ `Countdown`
+- **localStorage:** `batonboard:name` เก็บชื่อเล่น และ `batonboard:room:<CODE>` เก็บ `{ token, playerId }` เปิดห้องเดิมในแท็บที่สองของเบราว์เซอร์เดียวกันจะเป็นผู้เล่นคนเดิม ถ้าจะทดสอบหลายผู้เล่นในเครื่องเดียวต้องใช้ browser context แยก
 - **การ์ดบทบาท:** `HoldToReveal` กดค้างเพื่อดู มีปุ่มเปิดค้าง/ซ่อน ปุ่มสำคัญสูงอย่างน้อย 48px และหน้าจอกว้างไม่เกิน `max-w-md`
-- **รัน dev:** `.claude/launch.json` มี `server` (พอร์ต 4000) และ `web` (พอร์ต 3000) ตั้ง `NEXT_PUBLIC_SERVER_URL` ได้ (ดู `apps/web/.env.example`)
+- **รัน dev:** `pnpm --filter @batonboard/web dev` (หรือ `web` ใน `.claude/launch.json` พอร์ต 3000) ไม่ต้องตั้งอะไร ห้องอยู่ในหน่วยความจำของ `next dev` ถ้าอยากใช้ Redis จริงให้ตั้ง Upstash env ใน `apps/web/.env.local` (ดู `apps/web/.env.example`)
 
 ### E2E (`e2e/`)
 
-- รัน `pnpm e2e` ได้ Playwright จะเปิด server ที่พอร์ต 4100 และ `next dev` ที่พอร์ต 3100 (`distDir` เป็น `.next-e2e`) เอง จึงรันพร้อม dev server ปกติได้
+- รัน `pnpm e2e` ได้ Playwright จะเปิด `next dev` ที่พอร์ต 3100 (`distDir` เป็น `.next-e2e`, store ในหน่วยความจำ, poll ทุก 300ms) เอง จึงรันพร้อม dev server ปกติได้
 - ใช้ viewport แบบ Pixel 7 ผู้เล่นแต่ละคนเป็น browser context แยก ในเครื่อง dev ใช้ Chrome ที่ติดตั้งอยู่ (`channel: 'chrome'`) ส่วน CI ใช้ Chromium ของ Playwright (ต้องรัน `pnpm --filter @batonboard/e2e exec playwright install --with-deps chromium` ก่อน)
 - เทสต์อ่านข้อความจากไฟล์ข้อความจริง (`apps/web/src/messages/th.ts` และ `spyfall/client/messages.ts`) ใช้ `exact: true` กับชื่อปุ่มทุกครั้ง เพราะ "เห็นด้วย" เป็น substring ของ "ไม่เห็นด้วย" และหาองค์ประกอบด้วย `data-testid` (`room-code`, `role-spy`/`role-agent`/`role-location`/`role-name`, `spy-guess`, `reveal-winner`/`reveal-spy`, `data-phase`)
 - ปุ่มบนหน้าแรกกดได้หลัง hydrate แล้วเท่านั้น (state `ready`) กันกรณีกดก่อน JS พร้อมแล้วปุ่มไม่ทำอะไร ซึ่งเจอทั้งใน e2e และบนมือถือที่ช้า
@@ -312,11 +313,8 @@ type SpyfallAction =
 
 ### Deploy
 
-- ขั้นตอนทั้งหมดอยู่ใน `docs/deploy.md`
-- server ถูกรวมเป็นไฟล์เดียว `apps/server/dist/main.js` ด้วย esbuild (`pnpm --filter @batonboard/server build`) รวม package ใน monorepo และ dependency ไว้แล้ว image จึงไม่ต้องมี node_modules (`apps/server/Dockerfile` build จาก root) รัน bundle ด้วย `start:prod`
-- Fly.io (`fly.toml` ที่ root) ใช้ภูมิภาค `sin` เครื่องเดียว (`fly deploy --ha=false`) และ `auto_stop_machines = "off"` เพราะห้องอยู่ในหน่วยความจำ deploy ใหม่เมื่อไรห้องหายหมด health check อยู่ที่ `/health`
-- Vercel ตั้ง Root Directory เป็น `apps/web` (`apps/web/vercel.json`) env `NEXT_PUBLIC_SERVER_URL` ถูกฝังตอน build ถ้าเปลี่ยนต้อง redeploy
-- `WEB_ORIGIN` ใช้ `*` แทนหนึ่งช่วงของ subdomain ได้ (`parseOrigin` ใน `apps/server/src/config.ts`) สำหรับ preview deploy ของ Vercel ให้ใส่ slug ทีมไว้ท้าย pattern เสมอ
+- ขั้นตอนทั้งหมดอยู่ใน `docs/deploy.md`: Vercel โปรเจกต์เดียว Root Directory `apps/web` (`apps/web/vercel.json`) + Upstash Redis จาก Vercel Marketplace (ใส่ `KV_REST_API_URL` และ `KV_REST_API_TOKEN` ให้เอง)
+- แผนฟรีของ Upstash จำกัดจำนวนคำสั่งต่อเดือน poll หนึ่งครั้งใช้ราว 1–2 คำสั่ง ถ้าเล่นเยอะจนใกล้โควตาให้เพิ่ม `NEXT_PUBLIC_POLL_MS`
 
 ---
 
@@ -328,10 +326,10 @@ type SpyfallAction =
 - [x] `packages/engine`: `GameDefinition`, `Rng`, game runner, registry
 - [x] `packages/games/spyfall/rules` + unit test ทั้งหมดข้างบน
 - [x] `packages/games/spyfall/data`: ชุดสถานที่และบทบาทที่เขียนเอง อย่างน้อย 20 สถานที่
-- [x] `apps/server`: ห้อง, token, action pipeline, playerView, timer, reconnect
+- [x] Game server: ห้อง, token, action pipeline, playerView, timer, reconnect (ย้ายจาก `apps/server` ไป `packages/rooms` + API ของ Next.js แล้ว)
 - [x] `apps/web`: หน้าแรก, สร้าง/เข้าห้อง, ล็อบบี้, หน้าเล่น, หน้า reveal
 - [x] Playwright e2e 4 ผู้เล่น
-- [ ] Deploy (Vercel + Fly.io/Railway) — ไฟล์ตั้งค่าพร้อมแล้ว รอ deploy จริงตาม `docs/deploy.md` แล้วค่อยติ๊ก
+- [ ] Deploy (Vercel + Upstash) — ไฟล์ตั้งค่าพร้อมแล้ว รอ deploy จริงตาม `docs/deploy.md` แล้วค่อยติ๊ก
 
 ### เฟส 2 — ขัดเกลา
 

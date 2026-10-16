@@ -29,8 +29,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm test
-      - name: Build server bundle
-        run: pnpm --filter @batonboard/server build
+      - name: Build web
+        run: pnpm --filter @batonboard/web build
 
   e2e:
     runs-on: ubuntu-latest

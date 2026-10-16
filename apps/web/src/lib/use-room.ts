@@ -2,9 +2,9 @@
 
 import { useSyncExternalStore } from 'react';
 import { getRoomClient } from './room-client';
-import type { RoomClient, RoomSnapshot } from './room-client';
+import type { RoomClient, RoomSnapshotState } from './room-client';
 
-export function useRoom(): [RoomSnapshot, RoomClient] {
+export function useRoom(): [RoomSnapshotState, RoomClient] {
   const client = getRoomClient();
   const snapshot = useSyncExternalStore(
     client.subscribe,

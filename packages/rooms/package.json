@@ -1,0 +1,19 @@
+{
+  "name": "@batonboard/rooms",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@batonboard/engine": "workspace:*",
+    "@batonboard/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@batonboard/spyfall": "workspace:*"
+  }
+}

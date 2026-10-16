@@ -84,7 +84,9 @@ export default tseslint.config(
 
   // กฎสถาปัตยกรรมข้อ 4: แพลตฟอร์มไม่รู้จักกติกาเกม
   {
-    files: ['packages/engine/**/*.ts'],
+    files: ['packages/engine/**/*.ts', 'packages/rooms/src/**/*.ts'],
+    // เทสต์ของ rooms ใช้เกมจริงได้
+    ignores: ['**/*.test.ts', 'packages/rooms/src/testing.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -92,7 +94,7 @@ export default tseslint.config(
           patterns: [
             {
               group: ['@batonboard/spyfall*'],
-              message: 'engine ห้ามรู้จักเกมใดเกมหนึ่ง',
+              message: 'engine และ rooms ห้ามรู้จักเกมใดเกมหนึ่ง',
             },
           ],
         },

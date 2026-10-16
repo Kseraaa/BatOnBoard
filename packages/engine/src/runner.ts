@@ -3,7 +3,7 @@ import type { ActionContext, GameDefinition, PlayerId, Result, Rng } from './typ
 
 /**
  * Game runner — pipeline ของ server ในรูปฟังก์ชันบริสุทธิ์
- * server เป็นคนถือ state, ตั้ง timer และส่ง socket ส่วน runner แค่คำนวณ
+ * ฝั่ง server (packages/rooms) เป็นคนเก็บ state และส่ง view ส่วน runner แค่คำนวณ
  *
  *   startGame → (dispatchAction | fireDeadline | removePlayer)* → viewsFor
  */
@@ -31,7 +31,7 @@ export function startGame<S, A, V, O>(
   return { ok: true, value: game.setup([...players], options.data, rng, now) };
 }
 
-/** socket 'game:action' → actionSchema.parse → validate → apply */
+/** 'game:action' → actionSchema.parse → validate → apply */
 export function dispatchAction<S, A, V, O>(
   game: GameDefinition<S, A, V, O>,
   state: S,
@@ -55,14 +55,14 @@ export function dispatchAction<S, A, V, O>(
   return { ok: true, value: game.apply(state, parsed.data, by, now, rng) };
 }
 
-/** เวลาที่ server ต้องตั้ง timeout ไว้ปลุกเกม หรือ null */
+/** เวลาที่เกมต้องถูกปลุก (deadline ถัดไป) หรือ null */
 export function getDeadline<S, A, V, O>(game: GameDefinition<S, A, V, O>, state: S): number | null {
   if (game.isOver(state) || !game.nextDeadline) return null;
   return game.nextDeadline(state);
 }
 
 /**
- * เรียกเมื่อ timer ของ server ทำงาน
+ * เรียกเมื่อถึงหรือเลย deadline แล้ว (server เช็กทุก request)
  * คืน state เดิม (object เดิม) ถ้ายังไม่ถึงเวลา — กันกรณี timer เก่าที่ยกเลิกไม่ทัน
  */
 export function fireDeadline<S, A, V, O>(
