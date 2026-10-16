@@ -63,7 +63,7 @@ export type PlayerId = string;
 export interface Rng {
   next(): number;                 // [0, 1)
   int(maxExclusive: number): number;
-  shuffle<T>(items: T[]): T[];
+  shuffle<T>(items: readonly T[]): T[]; // คืน array ใหม่
 }
 
 export interface ActionContext {
@@ -75,14 +75,16 @@ export interface GameDefinition<State, Action, View, Options = unknown> {
   minPlayers: number;
   maxPlayers: number;
   actionSchema: ZodType<Action>;  // ใช้ตรวจ payload จาก client
+  optionsSchema: ZodType<Options>; // ตั้งค่าห้องก็มาจาก client ต้องตรวจเหมือนกัน
+  defaultOptions: Options;
   setup(players: PlayerId[], options: Options, rng: Rng, now: number): State;
-  validate(state: State, action: Action, by: PlayerId, ctx: ActionContext): string | null; // ข้อความ error หรือ null
+  validate(state: State, action: Action, by: PlayerId, ctx: ActionContext): string | null; // รหัส error เช่น 'not-host' หรือ null
   apply(state: State, action: Action, by: PlayerId, now: number, rng: Rng): State;
   playerView(state: State, viewer: PlayerId): View;  // ตัดข้อมูลลับออก
   nextDeadline?(state: State): number | null;        // เวลาที่ server ต้องปลุกเกม
   onDeadline?(state: State, now: number): State;     // เช่น หมดเวลาถาม
   onPlayerLeave?(state: State, player: PlayerId, now: number): State; // ถูกเตะ/ออกกลางเกม
-  isOver(state: State): boolean;
+  isOver(state: State): boolean;                     // true = ไม่รับ action ใด ๆ อีก (ห้องกลับล็อบบี้)
 }
 ```
 
@@ -95,6 +97,21 @@ socket 'game:action' → actionSchema.parse → validate → apply
 → ตั้ง timeout ใหม่จาก nextDeadline
 → ส่ง 'game:view' = playerView(state, p) แยกให้ผู้เล่นแต่ละคน
 ```
+
+engine มี pipeline นี้เป็นฟังก์ชันบริสุทธิ์ใน `runner.ts` server ใช้ฟังก์ชันเหล่านี้ ไม่เรียก method ของเกมเอง:
+
+| ฟังก์ชัน | หน้าที่ |
+| --- | --- |
+| `startGame(game, players, rawOptions, rng, now)` | ตรวจจำนวนผู้เล่น ชื่อซ้ำ และ `optionsSchema` แล้วเรียก `setup` |
+| `dispatchAction(game, state, payload, by, ctx, now, rng)` | ตรวจว่าเกมยังไม่จบ → `safeParse` → `validate` → `apply` คืน `Result<State>` |
+| `getDeadline(game, state)` | เวลาที่ต้องตั้ง timeout (เป็น `null` เมื่อเกมจบ) |
+| `fireDeadline(game, state, now)` | เรียก `onDeadline` เฉพาะเมื่อถึงเวลาจริง ถ้ายังไม่ถึงคืน object เดิม (กัน timer เก่า) |
+| `removePlayer(game, state, player, now)` | เรียก `onPlayerLeave` |
+| `viewsFor(game, state, viewers)` | `Map<PlayerId, View>` แยกรายคน |
+
+- รหัส error ของ engine อยู่ใน `EngineError`: `invalid-action`, `invalid-options`, `too-few-players`, `too-many-players`, `duplicate-players`, `game-over` ส่วนรหัสของแต่ละเกมกำหนดใน `validate` และ client เป็นคนแปลรหัสเป็นข้อความ
+- `createRng(seed)` ใช้อัลกอริทึม mulberry32 server สุ่ม seed จาก `crypto` และใช้ rng หนึ่งตัวต่อห้อง
+- `createRegistry()` เป็น factory ไม่ใช่ singleton ห้าม id ซ้ำ และตรวจช่วงจำนวนผู้เล่น
 
 ---
 
@@ -241,7 +258,7 @@ type SpyfallAction =
 ### เฟส 1 — MVP (ทำตามลำดับ)
 
 - [x] ตั้ง monorepo (pnpm workspaces, TypeScript, Vitest, ESLint/Prettier)
-- [ ] `packages/engine`: `GameDefinition`, `Rng`, game runner, registry
+- [x] `packages/engine`: `GameDefinition`, `Rng`, game runner, registry
 - [ ] `packages/games/spyfall/rules` + unit test ทั้งหมดข้างบน
 - [ ] `packages/games/spyfall/data`: ชุดสถานที่และบทบาทที่เขียนเอง อย่างน้อย 20 สถานที่
 - [ ] `apps/server`: ห้อง, token, action pipeline, playerView, timer, reconnect
