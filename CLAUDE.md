@@ -44,6 +44,7 @@ batonboard/
 │  └─ server/           # Fastify + Socket.IO: ห้อง, การเชื่อมต่อ, timer
 ├─ packages/
 │  ├─ engine/           # GameDefinition, type กลาง, game runner, registry
+│  ├─ protocol/         # event Socket.IO + Zod schema ที่ web กับ server ใช้ร่วม
 │  ├─ ui/               # component ใช้ร่วม (ปุ่ม, การ์ด, นาฬิกา)
 │  └─ games/
 │     └─ spyfall/
@@ -189,9 +190,10 @@ type SpyfallAction =
 - **ตัวตน:** ครั้งแรก server ออก `playerToken` แบบสุ่ม client เก็บไว้ เมื่อรีเฟรช/เน็ตหลุด ส่ง token เดิม → server ผูกกับผู้เล่นเดิมและส่ง view ปัจจุบันทันที
 - **หลุดการเชื่อมต่อ:** ไม่ลบผู้เล่นทันที แสดงสถานะ "ออฟไลน์" ให้ host เลือกเตะได้
 - **Timer:** server เก็บ `deadline` และตั้ง timeout ของตัวเองเพื่อเรียก `onDeadline` ส่ง `serverNow` ไปกับทุก view ให้ client คำนวณนับถอยหลังโดยชดเชยนาฬิกาเครื่อง
-- **Events:**
-  - client → server: `room:create`, `room:join`, `room:start`, `room:kick`, `game:action`
-  - server → client: `room:state` (รายชื่อ, host, ตั้งค่า, สถานะออนไลน์), `game:view`, `error`
+- **Events** (type และ schema อยู่ใน `@batonboard/protocol`):
+  - client → server: `room:create`, `room:join`, `room:leave`, `room:settings`, `room:start`, `room:lobby` (host พากลับล็อบบี้), `room:kick`, `game:action`
+  - server → client: `room:state` (รายชื่อ, host, ตั้งค่า, สถานะออนไลน์), `game:view` (`{ view, serverNow }`), `room:kicked` (`kicked` | `replaced`), `error`
+  - ทุก event ฝั่ง client ส่ง ack ได้: `{ ok: true, value } | { ok: false, error: <รหัส> }` ถ้าไม่ส่ง ack แล้วไม่สำเร็จ server ส่ง event `error` `{ code }` กลับไปแทน
 
 ---
 
@@ -274,6 +276,19 @@ type SpyfallAction =
 - `data.test.ts` ตรวจว่ามีอย่างน้อย 20 สถานที่ id เป็น slug ชื่อไม่ซ้ำ บทบาทพอ 7 อย่าง มีชื่อไทย/อังกฤษครบ และ**ไม่ตรงกับสถานที่ของเกมต้นฉบับ** (เทียบกับรายการห้ามใช้ที่อยู่ในไฟล์เทสต์เท่านั้น ห้ามย้ายรายการนี้ไปไว้ใน data หรือ UI)
 - จะเพิ่มชุดใหม่ ให้สร้างไฟล์ใน `data/` แล้วเพิ่มใน `locationSets` เทสต์ทุกข้อจะรันกับทุกชุดอัตโนมัติ
 
+### Game server (`apps/server`)
+
+- `RoomManager` (`rooms.ts`) ไม่รู้จัก socket และไม่รู้จักกติกาเกมใด ได้ `Transport`, `Scheduler`, `IdSource` และ `now` มาจากข้างนอก เทสต์จึงใช้ของปลอมจาก `testing.ts` เดินเวลาเองได้ ส่วน `app.ts` เป็นแค่ตัวต่อ Socket.IO เข้ากับ `RoomManager`
+- `games.ts` เป็นที่เดียวใน server ที่อ้างชื่อเกม (ใช้ลงทะเบียนใน registry)
+- **ตัวตน:** `playerId` เป็นข้อมูลสาธารณะ (อยู่ใน `room:state` และ view) ส่วน `playerToken` เป็นความลับ ห้ามออกไปนอก ack ของเจ้าของ token ผูกกับห้องเดียว (client เก็บแยกตามรหัสห้อง) สร้างจาก `crypto` (24 byte)
+- **กลับเข้าห้อง:** `room:join` ที่มี `token` ตรงกับผู้เล่นในห้อง = ผู้เล่นคนเดิม (ใช้ชื่อเดิม) และได้ view ปัจจุบันทันที ถ้ามีแท็บเก่าค้างอยู่ แท็บเก่าจะได้ `room:kicked { reason: 'replaced' }` แล้วถูกตัด ถ้า token ไม่ตรงก็เข้าเป็นผู้เล่นใหม่
+- **ห้อง:** จำนวนคนในห้องไม่เกิน `maxPlayers` ของเกม ชื่อห้ามซ้ำโดยไม่สนตัวพิมพ์ (ยาว 1–20 ตัว) คนที่เข้ามากลางเกมจะเห็น view แบบ `spectator` และได้เล่นรอบถัดไปหลังกลับล็อบบี้
+- **host:** ถ้า host ออกหรือถูกลบ โอนให้คนถัดไปตามลำดับการเข้าห้องที่ออนไลน์อยู่ ถ้า host ออฟไลน์เกิน 30 วินาที (`HOST_GRACE_MS`) ก็โอนเหมือนกัน host เตะตัวเองไม่ได้
+- **ลบห้อง:** เมื่อคนสุดท้ายออก หรือทุกคนออฟไลน์เกิน 10 นาที (`ROOM_IDLE_MS`)
+- **timer:** หนึ่งตัวต่อห้อง (`deadline:<code>`) ตั้งใหม่ทุกครั้งที่ state เปลี่ยน ถ้า timer มาก่อนเวลา `fireDeadline` ไม่ทำอะไรแล้วตั้ง timer ใหม่
+- จำกัดขนาด payload ของ Socket.IO ที่ 16 KB ยังไม่มี rate limit (ทำในเฟส deploy ถ้าจำเป็น)
+- รัน: `pnpm --filter @batonboard/server dev` (tsx watch) env ดูได้ที่ `apps/server/.env.example` (`PORT`, `HOST`, `WEB_ORIGIN` คั่นด้วย comma)
+
 ---
 
 ## Roadmap
@@ -284,7 +299,7 @@ type SpyfallAction =
 - [x] `packages/engine`: `GameDefinition`, `Rng`, game runner, registry
 - [x] `packages/games/spyfall/rules` + unit test ทั้งหมดข้างบน
 - [x] `packages/games/spyfall/data`: ชุดสถานที่และบทบาทที่เขียนเอง อย่างน้อย 20 สถานที่
-- [ ] `apps/server`: ห้อง, token, action pipeline, playerView, timer, reconnect
+- [x] `apps/server`: ห้อง, token, action pipeline, playerView, timer, reconnect
 - [ ] `apps/web`: หน้าแรก, สร้าง/เข้าห้อง, ล็อบบี้, หน้าเล่น, หน้า reveal
 - [ ] Playwright e2e 4 ผู้เล่น
 - [ ] Deploy (Vercel + Fly.io/Railway)
