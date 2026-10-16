@@ -289,6 +289,17 @@ type SpyfallAction =
 - จำกัดขนาด payload ของ Socket.IO ที่ 16 KB ยังไม่มี rate limit (ทำในเฟส deploy ถ้าจำเป็น)
 - รัน: `pnpm --filter @batonboard/server dev` (tsx watch) env ดูได้ที่ `apps/server/.env.example` (`PORT`, `HOST`, `WEB_ORIGIN` คั่นด้วย comma)
 
+### Web (`apps/web`) และหน้าจอเกม
+
+- Next.js 16 (App Router, Turbopack) + React 19 + Tailwind 4 คอมโพเนนต์แบบ shadcn/ui (cva + tailwind-merge) อยู่ใน `packages/ui` (เขียนเองตามแบบ shadcn ยังไม่ได้ใช้ CLI) ใช้ฟอนต์ Noto Sans Thai และมีโหมดมืดตาม `prefers-color-scheme`
+- `packages/ui/src/game-client.ts` เป็นสัญญาระหว่างเว็บกับหน้าจอเกม: `GameClient` มี `Screen` (ได้ `view: unknown` แล้วแปลง type เอง), `Settings`, ชื่อ และจำนวนผู้เล่น เว็บลงทะเบียนเกมที่ `apps/web/src/games.ts` ที่เดียว
+- ชื่อเกมที่แสดง `GAME_DISPLAY_NAME` อยู่ใน `packages/games/spyfall/client/messages.ts` ตอนนี้คือ "ใครคือสายลับ" / "Who's the Spy?" ข้อความของเกมอยู่ในไฟล์นั้น ข้อความของแพลตฟอร์มอยู่ที่ `apps/web/src/messages/{th,en}.ts` (เทสต์ตรวจว่า key ตรงกันและครอบคลุมรหัส error ทุกตัว)
+- client import ค่าคงที่จาก `rules/constants.ts` และ type จาก `rules/types.ts` เท่านั้น ไม่ import `rules/game.ts` เพื่อไม่ให้ zod ติดไปใน bundle
+- **socket:** มีตัวเดียวทั้งเว็บ (`lib/room-client.ts` ใช้กับ `useSyncExternalStore`) เปลี่ยนหน้าแล้วไม่หลุดห้อง ถ้าต่อใหม่จะ `room:join` ด้วย token เดิมเอง `serverOffset = serverNow - Date.now()` ใช้กับ `Countdown`
+- **localStorage:** `batonboard:name` เก็บชื่อเล่น และ `batonboard:room:<CODE>` เก็บ `{ token, playerId }` เปิดห้องเดิมในแท็บที่สองของเบราว์เซอร์เดียวกันจะได้ตัวตนเดิม แท็บแรกจะได้ข้อความว่า "เปิดในแท็บอื่นแล้ว" พร้อมปุ่ม "ใช้แท็บนี้แทน" ถ้าจะทดสอบหลายผู้เล่นในเครื่องเดียวต้องใช้ browser context แยก
+- **การ์ดบทบาท:** `HoldToReveal` กดค้างเพื่อดู มีปุ่มเปิดค้าง/ซ่อน ปุ่มสำคัญสูงอย่างน้อย 48px และหน้าจอกว้างไม่เกิน `max-w-md`
+- **รัน dev:** `.claude/launch.json` มี `server` (พอร์ต 4000) และ `web` (พอร์ต 3000) ตั้ง `NEXT_PUBLIC_SERVER_URL` ได้ (ดู `apps/web/.env.example`)
+
 ---
 
 ## Roadmap
@@ -300,7 +311,7 @@ type SpyfallAction =
 - [x] `packages/games/spyfall/rules` + unit test ทั้งหมดข้างบน
 - [x] `packages/games/spyfall/data`: ชุดสถานที่และบทบาทที่เขียนเอง อย่างน้อย 20 สถานที่
 - [x] `apps/server`: ห้อง, token, action pipeline, playerView, timer, reconnect
-- [ ] `apps/web`: หน้าแรก, สร้าง/เข้าห้อง, ล็อบบี้, หน้าเล่น, หน้า reveal
+- [x] `apps/web`: หน้าแรก, สร้าง/เข้าห้อง, ล็อบบี้, หน้าเล่น, หน้า reveal
 - [ ] Playwright e2e 4 ผู้เล่น
 - [ ] Deploy (Vercel + Fly.io/Railway)
 

@@ -1,6 +1,7 @@
 import { createRng, fireDeadline, removePlayer, startGame } from '@batonboard/engine';
 import { describe, expect, it } from 'vitest';
-import { createSpyfall, DEFAULT_DURATION_MS, FINAL_VOTE_MS, SpyfallError, VOTE_MS } from './game';
+import { DEFAULT_DURATION_MS, FINAL_VOTE_MS, SpyfallError, VOTE_MS } from './constants';
+import { createSpyfall } from './game';
 import type { SpyfallState } from './types';
 import {
   act,

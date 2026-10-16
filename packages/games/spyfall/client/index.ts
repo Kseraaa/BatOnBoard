@@ -1,2 +1,21 @@
-// หน้าจอเกม (React) — Roadmap ข้อ 6
-export {};
+import type { GameClient } from '@batonboard/ui';
+import { MAX_PLAYERS, MIN_PLAYERS } from '../rules/constants';
+import { GAME_DESCRIPTION, GAME_DISPLAY_NAME } from './messages';
+import { SpyfallScreen } from './screen';
+import { SpyfallSettings } from './settings';
+
+export { GAME_DESCRIPTION, GAME_DISPLAY_NAME, spyfallMessages } from './messages';
+export type { SpyfallMessages } from './messages';
+export { SpyfallScreen } from './screen';
+export { SpyfallSettings } from './settings';
+
+/** หน้าจอของเกมที่เว็บลงทะเบียนใน apps/web/src/games.ts */
+export const spyfallClient: GameClient = {
+  id: 'spyfall',
+  displayName: GAME_DISPLAY_NAME,
+  description: GAME_DESCRIPTION,
+  minPlayers: MIN_PLAYERS,
+  maxPlayers: MAX_PLAYERS,
+  Screen: SpyfallScreen,
+  Settings: SpyfallSettings,
+};

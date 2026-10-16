@@ -1,5 +1,5 @@
+export { createSpyfall } from './game';
 export {
-  createSpyfall,
   DEFAULT_DURATION_MS,
   FINAL_VOTE_MS,
   MAX_DURATION_MS,
@@ -8,7 +8,8 @@ export {
   MIN_PLAYERS,
   SpyfallError,
   VOTE_MS,
-} from './game';
+} from './constants';
+export type { SpyfallErrorCode } from './constants';
 export type {
   LocationDef,
   Phase,
