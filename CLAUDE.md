@@ -230,6 +230,7 @@ type SpyfallAction =
 - หน้าบทบาทต้องซ่อนได้ (กดค้างเพื่อดู หรือปุ่มซ่อน) เพราะคนข้าง ๆ อาจมองเห็นจอ
 - CORS ของ game server รับเฉพาะโดเมนเว็บของโปรเจกต์ มี endpoint `/health`
 - รัน `pnpm test`, `pnpm typecheck` และ `pnpm lint` ให้ผ่านก่อนจบทุกงาน ถ้าแก้ UI หรือ flow ของห้องให้รัน `pnpm e2e` ด้วย
+- CI (GitHub Actions, `.github/workflows/ci.yml`) รันเมื่อ push ไป `main` และทุก pull request มี 2 job: `check` (typecheck, lint, format:check, test และ build bundle ของ server) กับ `e2e` (Playwright บน Chromium) ถ้าเพิ่มคำสั่งตรวจใหม่ ให้เพิ่มใน workflow ด้วย
 
 ---
 
@@ -307,6 +308,7 @@ type SpyfallAction =
 - เทสต์อ่านข้อความจากไฟล์ข้อความจริง (`apps/web/src/messages/th.ts` และ `spyfall/client/messages.ts`) ใช้ `exact: true` กับชื่อปุ่มทุกครั้ง เพราะ "เห็นด้วย" เป็น substring ของ "ไม่เห็นด้วย" และหาองค์ประกอบด้วย `data-testid` (`room-code`, `role-spy`/`role-agent`/`role-location`/`role-name`, `spy-guess`, `reveal-winner`/`reveal-spy`, `data-phase`)
 - ปุ่มบนหน้าแรกกดได้หลัง hydrate แล้วเท่านั้น (state `ready`) กันกรณีกดก่อน JS พร้อมแล้วปุ่มไม่ทำอะไร ซึ่งเจอทั้งใน e2e และบนมือถือที่ช้า
 - `next-env.d.ts` และ `apps/web/AGENTS.md` เป็นไฟล์ที่ Next สร้างเองและอยู่ใน `.gitignore` คำสั่ง `typecheck` ของเว็บรัน `next typegen` ก่อน `tsc`
+- job `e2e` ใน CI ตั้ง `CI=true` (ใช้ Chromium, retries 1, ไม่ reuse server) ถ้าเทสต์ล้มจะอัปโหลด `e2e/playwright-report` และ `e2e/test-results` (มี trace) เป็น artifact ชื่อ `playwright-report`
 
 ### Deploy
 
