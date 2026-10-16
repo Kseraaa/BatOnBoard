@@ -66,6 +66,9 @@ importers:
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       socket.io-client:
         specifier: ^4.8.4
         version: 4.8.4

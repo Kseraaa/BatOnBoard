@@ -308,6 +308,14 @@ type SpyfallAction =
 - ปุ่มบนหน้าแรกกดได้หลัง hydrate แล้วเท่านั้น (state `ready`) กันกรณีกดก่อน JS พร้อมแล้วปุ่มไม่ทำอะไร ซึ่งเจอทั้งใน e2e และบนมือถือที่ช้า
 - `next-env.d.ts` และ `apps/web/AGENTS.md` เป็นไฟล์ที่ Next สร้างเองและอยู่ใน `.gitignore` คำสั่ง `typecheck` ของเว็บรัน `next typegen` ก่อน `tsc`
 
+### Deploy
+
+- ขั้นตอนทั้งหมดอยู่ใน `docs/deploy.md`
+- server ถูกรวมเป็นไฟล์เดียว `apps/server/dist/main.js` ด้วย esbuild (`pnpm --filter @batonboard/server build`) รวม package ใน monorepo และ dependency ไว้แล้ว image จึงไม่ต้องมี node_modules (`apps/server/Dockerfile` build จาก root) รัน bundle ด้วย `start:prod`
+- Fly.io (`fly.toml` ที่ root) ใช้ภูมิภาค `sin` เครื่องเดียว (`fly deploy --ha=false`) และ `auto_stop_machines = "off"` เพราะห้องอยู่ในหน่วยความจำ deploy ใหม่เมื่อไรห้องหายหมด health check อยู่ที่ `/health`
+- Vercel ตั้ง Root Directory เป็น `apps/web` (`apps/web/vercel.json`) env `NEXT_PUBLIC_SERVER_URL` ถูกฝังตอน build ถ้าเปลี่ยนต้อง redeploy
+- `WEB_ORIGIN` ใช้ `*` แทนหนึ่งช่วงของ subdomain ได้ (`parseOrigin` ใน `apps/server/src/config.ts`) สำหรับ preview deploy ของ Vercel ให้ใส่ slug ทีมไว้ท้าย pattern เสมอ
+
 ---
 
 ## Roadmap
@@ -321,7 +329,7 @@ type SpyfallAction =
 - [x] `apps/server`: ห้อง, token, action pipeline, playerView, timer, reconnect
 - [x] `apps/web`: หน้าแรก, สร้าง/เข้าห้อง, ล็อบบี้, หน้าเล่น, หน้า reveal
 - [x] Playwright e2e 4 ผู้เล่น
-- [ ] Deploy (Vercel + Fly.io/Railway)
+- [ ] Deploy (Vercel + Fly.io/Railway) — ไฟล์ตั้งค่าพร้อมแล้ว รอ deploy จริงตาม `docs/deploy.md` แล้วค่อยติ๊ก
 
 ### เฟส 2 — ขัดเกลา
 
