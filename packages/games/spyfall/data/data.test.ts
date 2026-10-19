@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_PLAYERS } from '../rules';
+import { MAX_PLAYERS, MIN_STANDARD_ROLES } from '../rules';
 import { DEFAULT_LOCATION_SET_ID, getLocationSet, locationSets, toLocationDefs } from './index';
 
 /**
@@ -133,9 +133,11 @@ describe.each(Object.values(locationSets))('ชุดสถานที่ $id',
     }
   });
 
-  it('ทุกสถานที่มีบทบาทพอให้ผู้เล่นสูงสุดได้คนละอย่าง และไม่ซ้ำ', () => {
+  it('ทุกสถานที่มีบทบาทอย่างน้อย 12 อย่างไม่ซ้ำ (พอสำหรับ 8 คน และสุ่มแล้วไม่ได้บทบาทเดิมทุกรอบ)', () => {
     for (const l of set.locations) {
-      expect(l.roles.length, l.id).toBeGreaterThanOrEqual(MAX_PLAYERS - 1);
+      expect(l.roles.length, l.id).toBeGreaterThanOrEqual(
+        Math.max(MAX_PLAYERS - 1, MIN_STANDARD_ROLES),
+      );
       expect(new Set(l.roles.map((r) => r.id)).size, l.id).toBe(l.roles.length);
       for (const lang of ['th', 'en'] as const) {
         const names = l.roles.map((r) => normalize(r.name[lang]));

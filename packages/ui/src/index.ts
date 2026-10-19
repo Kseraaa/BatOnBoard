@@ -5,6 +5,7 @@ export type { BadgeProps } from './badge';
 export { Button, buttonVariants } from './button';
 export type { ButtonProps } from './button';
 export { Card, CardTitle } from './card';
+export { copyText } from './clipboard';
 export { cn } from './cn';
 export { Countdown } from './countdown';
 export type { CountdownProps } from './countdown';

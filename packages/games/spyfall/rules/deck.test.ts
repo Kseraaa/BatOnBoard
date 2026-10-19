@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_CUSTOM_LOCATIONS, MIN_DURATION_MS, SpyfallError } from './constants';
+import {
+  MAX_CUSTOM_LOCATIONS,
+  MAX_CUSTOM_ROLES,
+  MAX_CUSTOM_TEXT,
+  MIN_DURATION_MS,
+  SpyfallError,
+} from './constants';
 import { buildDeck, customRoleId } from './deck';
 import { act, agents, HOST, spyfall, start, testLocations, tryAct } from './fixtures';
 import type { CustomLocation, SpyfallOptions } from './types';
@@ -71,7 +77,7 @@ describe('ตรวจตั้งค่าสถานที่', () => {
     ['ชื่อว่าง', options({ custom: [{ ...custom(1), name: '   ' }] })],
     ['ชื่อยาวเกิน', options({ custom: [{ ...custom(1), name: 'ก'.repeat(31) }] })],
     ['ไม่มีบทบาท', options({ custom: [custom(1, 0)] })],
-    ['บทบาทเกิน 7', options({ custom: [custom(1, 8)] })],
+    ['บทบาทเกิน 15', options({ custom: [custom(1, 16)] })],
     ['บทบาทซ้ำ', options({ custom: [{ ...custom(1), roles: ['ครู', 'ครู'] }] })],
     [
       `สร้างเองเกิน ${MAX_CUSTOM_LOCATIONS}`,
@@ -79,6 +85,21 @@ describe('ตรวจตั้งค่าสถานที่', () => {
     ],
   ])('ปฏิเสธ: %s', (_name, o) => {
     expect(parse(o).success).toBe(false);
+  });
+
+  it('ตั้งค่าใหญ่สุดที่ผ่าน schema ยังส่งได้ภายในเพดาน body 16 KB ของ API', () => {
+    const text = (i: number) => `${i}`.padEnd(MAX_CUSTOM_TEXT, 'ก');
+    const biggest = options({
+      disabled: allIds.slice(1),
+      custom: Array.from({ length: MAX_CUSTOM_LOCATIONS }, (_, i) => ({
+        id: `custom-${1000 + i}`,
+        name: text(i),
+        roles: Array.from({ length: MAX_CUSTOM_ROLES }, (_, r) => text(r)),
+      })),
+    });
+    expect(parse(biggest).success).toBe(true);
+    // apps/web/src/server/http.ts นับความยาวสตริง (ไม่ใช่ byte)
+    expect(JSON.stringify({ options: biggest }).length).toBeLessThan(16 * 1024);
   });
 
   it('ปิดชุดมาตรฐานหมดแล้วใช้ที่สร้างเอง 2 แห่งได้', () => {
@@ -102,6 +123,20 @@ describe('เล่นด้วยกองสถานที่จากตั�
     const roles = Object.values(s.roles);
     expect(roles).toHaveLength(7);
     for (const r of roles) expect(r.startsWith(`${s.locationId}/r`)).toBe(true);
+  });
+
+  it('บทบาทมากกว่าจำนวนคน = แต่ละรอบสุ่มเลือกบางส่วน ไม่ได้ชุดเดิมทุกรอบ', () => {
+    const o = options({ disabled: allIds, custom: [custom(1, 15), custom(2, 15)] });
+    const used = new Set<string>();
+    const sets = new Set<string>();
+    for (let seed = 0; seed < 40; seed++) {
+      const roles = Object.values(start(4, seed, o).roles);
+      expect(new Set(roles).size).toBe(3);
+      roles.forEach((r) => used.add(r));
+      sets.add([...roles].sort().join());
+    }
+    expect(used.size).toBeGreaterThan(20);
+    expect(sets.size).toBeGreaterThan(30);
   });
 
   it('สายลับเดาได้เฉพาะสถานที่ในกอง', () => {

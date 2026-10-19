@@ -57,7 +57,11 @@ describe('ฟอร์มสถานที่ที่สร้างเอง'
     expect(checkCustomLocation({ ...ok, roles: [] }, [cafe], null)).toBe('roles');
     expect(checkCustomLocation({ ...ok, roles: ['a', 'A'] }, [cafe], null)).toBe('roles');
     expect(
-      checkCustomLocation({ ...ok, roles: Array.from({ length: 8 }, (_, i) => `r${i}`) }, [], null),
+      checkCustomLocation(
+        { ...ok, roles: Array.from({ length: 16 }, (_, i) => `r${i}`) },
+        [],
+        null,
+      ),
     ).toBe('roles');
     const full = Array.from({ length: 20 }, (_, i) => ({
       ...cafe,

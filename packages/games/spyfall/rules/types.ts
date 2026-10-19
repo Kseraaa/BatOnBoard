@@ -19,7 +19,7 @@ export interface CustomLocation {
   /** custom-<เลข> ไม่ซ้ำกัน */
   id: string;
   name: string;
-  /** 1–7 บทบาท ถ้าน้อยกว่าจำนวนคนจะวนซ้ำ */
+  /** 1–15 บทบาท แต่ละรอบสุ่มตามจำนวนคน ถ้าน้อยกว่าจำนวนคนจะวนซ้ำ */
   roles: string[];
 }
 

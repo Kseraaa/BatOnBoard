@@ -1,15 +1,19 @@
 'use client';
 
-import { Button, cn, Input } from '@batonboard/ui';
+import { Button, cn, copyText, Input } from '@batonboard/ui';
 import type { GameSettingsProps } from '@batonboard/ui';
 import { useEffect, useState } from 'react';
 import { DEFAULT_LOCATION_SET_ID, getLocationSet } from '../data';
+import type { LocationData } from '../data';
 import { MIN_DECK_SIZE } from '../rules/constants';
 import type { SpyfallOptions } from '../rules/types';
 import { checkCustomLocation, nextCustomId, parseRoles } from './custom-location';
 import type { CustomLocationError } from './custom-location';
 import { readOptions } from './deck';
 import { spyfallMessages } from './messages';
+import { loadSavedDeck, saveDeck } from './saved-deck';
+import { exportDeck, importDeck } from './share';
+import type { DeckChoice } from './share';
 
 /** ตัวเลือกเวลาถามตอบ (นาที) — server ตรวจช่วงที่ถูกต้องอีกชั้น */
 const DURATION_CHOICES = [5, 6, 8, 10, 12];
@@ -27,6 +31,13 @@ export function SpyfallSettings({ options, locale, editable, onChange }: GameSet
   const builtin = getLocationSet(DEFAULT_LOCATION_SET_ID)?.locations ?? [];
   const deckSize = builtin.length - current.disabled.length + current.custom.length;
 
+  // ชุดล่าสุดที่ host คนนี้เคยใช้ (localStorage อ่านได้หลัง mount เท่านั้น)
+  const [saved, setSaved] = useState<DeckChoice | null>(null);
+  useEffect(() => {
+    if (editable) setSaved(loadSavedDeck(builtin.map((l) => l.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- อ่านครั้งเดียวตอนเปิดหน้า
+  }, [editable]);
+
   function update(patch: Partial<Options>): boolean {
     const next = { ...current, ...patch };
     if (builtin.length - next.disabled.length + next.custom.length < MIN_DECK_SIZE) {
@@ -36,8 +47,12 @@ export function SpyfallSettings({ options, locale, editable, onChange }: GameSet
     setError(null);
     setCurrent(next);
     onChange(next);
+    // จำเฉพาะชุดที่มีสถานที่สร้างเอง ปิด/เปิดชุดมาตรฐานอย่างเดียวจะได้ไม่ทับชุดที่ตั้งใจทำไว้
+    if (next.custom.length > 0) saveDeck({ disabled: next.disabled, custom: next.custom });
     return true;
   }
+
+  const applyDeck = (deck: DeckChoice) => update({ disabled: deck.disabled, custom: deck.custom });
 
   return (
     <div className="space-y-5">
@@ -78,6 +93,17 @@ export function SpyfallSettings({ options, locale, editable, onChange }: GameSet
           </p>
         </div>
 
+        {editable && saved && current.custom.length === 0 && (
+          <div className="rounded-xl border border-primary/40 bg-primary/5 p-3">
+            <Button block variant="secondary" onClick={() => applyDeck(saved)}>
+              {m.useLast}
+            </Button>
+            <p className="mt-1.5 text-center text-xs text-muted-foreground">
+              {m.lastSummary(saved.custom.length, saved.disabled.length)}
+            </p>
+          </div>
+        )}
+
         <BuiltinPicker
           locale={locale}
           builtin={builtin}
@@ -91,6 +117,14 @@ export function SpyfallSettings({ options, locale, editable, onChange }: GameSet
           options={current}
           editable={editable}
           onChange={(custom) => update({ custom })}
+        />
+
+        <ShareBox
+          locale={locale}
+          deck={current}
+          builtin={builtin}
+          editable={editable}
+          onImport={applyDeck}
         />
 
         {error && (
@@ -294,6 +328,164 @@ function CustomLocations({
             </div>
           </div>
         ))}
+    </div>
+  );
+}
+
+function ShareBox({
+  locale,
+  deck,
+  builtin,
+  editable,
+  onImport,
+}: {
+  locale: GameSettingsProps['locale'];
+  deck: DeckChoice;
+  builtin: LocationData[];
+  editable: boolean;
+  onImport(deck: DeckChoice): boolean;
+}) {
+  const m = spyfallMessages[locale].settings;
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  // คัดลอกอัตโนมัติไม่ได้ = แสดงข้อความให้กดค้างคัดลอกเอง
+  const [manual, setManual] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [text, setText] = useState('');
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  const hasDeck = deck.custom.length > 0 || deck.disabled.length > 0;
+  const exported = () => exportDeck(deck, builtin, locale);
+
+  async function copy() {
+    const text = exported();
+    if (await copyText(text)) {
+      setManual(null);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } else {
+      setManual(text);
+    }
+  }
+
+  function apply() {
+    const res = importDeck(text, builtin);
+    if (!res.ok) {
+      const e = m.importErrors;
+      setMessage({
+        ok: false,
+        text:
+          res.error === 'unknown'
+            ? e.unknown(res.names.join(', '))
+            : res.error === 'location'
+              ? e.location(res.name, m.errors[res.problem])
+              : e[res.error],
+      });
+      return;
+    }
+    if (onImport(res.deck)) {
+      setMessage({ ok: true, text: m.importDone });
+      setImporting(false);
+      setText('');
+    } else {
+      setMessage(null);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex min-h-12 w-full items-center justify-between gap-2 px-3 text-left text-sm font-semibold"
+      >
+        {m.shareTitle}
+        <span aria-hidden className="text-primary">
+          {open ? '−' : '+'}
+        </span>
+      </button>
+      {open && (
+        <div className="space-y-2 border-t border-border p-3">
+          {hasDeck && (
+            <>
+              <p className="text-xs text-muted-foreground">{m.shareHint}</p>
+              <div className={cn('grid gap-2', canShare ? 'grid-cols-2' : 'grid-cols-1')}>
+                <Button variant="secondary" onClick={() => void copy()}>
+                  {copied ? m.copied : m.copy}
+                </Button>
+                {canShare && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => void navigator.share({ text: exported() }).catch(() => {})}
+                  >
+                    {m.share}
+                  </Button>
+                )}
+              </div>
+              {manual !== null && (
+                <div className="space-y-1">
+                  <p role="alert" className="text-sm font-semibold text-destructive">
+                    {m.copyFailed}
+                  </p>
+                  <textarea
+                    readOnly
+                    value={manual}
+                    rows={6}
+                    data-testid="share-text"
+                    onFocus={(e) => e.currentTarget.select()}
+                    className="w-full rounded-xl border border-border bg-muted px-4 py-3 text-sm"
+                  />
+                </div>
+              )}
+            </>
+          )}
+          {editable &&
+            (importing ? (
+              <div className="space-y-2">
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {m.importLabel}
+                  </span>
+                  <textarea
+                    value={text}
+                    rows={6}
+                    onChange={(e) => setText(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background px-4 py-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button onClick={apply}>{m.importApply}</Button>
+                  <Button variant="outline" onClick={() => setImporting(false)}>
+                    {m.cancel}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                block
+                variant="outline"
+                onClick={() => {
+                  setImporting(true);
+                  setMessage(null);
+                }}
+              >
+                {m.importOpen}
+              </Button>
+            ))}
+          {message && (
+            <p
+              role={message.ok ? 'status' : 'alert'}
+              className={cn(
+                'text-sm font-semibold',
+                message.ok ? 'text-success' : 'text-destructive',
+              )}
+            >
+              {message.text}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
