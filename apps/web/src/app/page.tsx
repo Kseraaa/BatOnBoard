@@ -1,106 +1,61 @@
 'use client';
 
-import { ROOM_CODE_LENGTH, MAX_NAME_LENGTH } from '@batonboard/protocol';
-import { Button, Card, CardTitle, cn, Input } from '@batonboard/ui';
+import { ROOM_CODE_LENGTH } from '@batonboard/protocol';
+import { Button, buttonVariants, Card, CardTitle, Input } from '@batonboard/ui';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { gameClients } from '@/games';
-import { getRoomClient } from '@/lib/room-client';
-import { storage } from '@/lib/storage';
-import { errorText, useLocale, useT } from '@/messages';
+import { useLocale, useT } from '@/messages';
 
-export default function HomePage() {
+/** หน้าหลักของเว็บ: แนะนำแพลตฟอร์ม → ไปเลือกเกม หรือเข้าห้องด้วยรหัส */
+export default function LandingPage() {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
-  const [name, setName] = useState('');
-  const [gameId, setGameId] = useState(gameClients[0]?.id ?? '');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   // ปุ่มกดได้หลัง hydrate เท่านั้น — มือถือช้า ๆ กดก่อน JS พร้อมแล้วปุ่มจะเงียบ
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    setName(storage.getName());
-    setReady(true);
-  }, []);
+  useEffect(() => setReady(true), []);
 
-  const trimmed = name.trim();
-
-  async function create() {
-    if (!trimmed) return setError(t.home.nameRequired);
-    setBusy(true);
-    setError(null);
-    storage.setName(trimmed);
-    const res = await getRoomClient().create(trimmed, gameId);
-    if (res.ok) {
-      router.push(`/r/${res.value.code}`);
-    } else {
-      setBusy(false);
-      setError(errorText(t, res.error));
-    }
-  }
-
+  // ชื่อเล่นถามที่หน้าห้อง (/r/<code>) อยู่แล้ว ที่นี่จึงรับแค่รหัส
   function join(e: FormEvent) {
     e.preventDefault();
-    if (!trimmed) return setError(t.home.nameRequired);
     const normalized = code.trim().toUpperCase();
     if (normalized.length !== ROOM_CODE_LENGTH) return setError(t.home.codeInvalid);
-    storage.setName(trimmed);
     router.push(`/r/${normalized}`);
   }
 
+  const steps = [
+    [t.landing.step1Title, t.landing.step1Body],
+    [t.landing.step2Title, t.landing.step2Body],
+    [t.landing.step3Title, t.landing.step3Body],
+  ] as const;
+
   return (
-    <div className="flex flex-1 flex-col gap-6">
-      <header className="pt-4 text-center">
+    <div className="flex flex-1 flex-col gap-8">
+      <header className="pt-6 text-center">
+        <div
+          aria-hidden
+          className="mx-auto mb-4 grid size-16 grid-cols-2 gap-1.5 rounded-2xl bg-primary p-3 shadow-lg shadow-primary/30"
+        >
+          <span className="rounded-full bg-primary-foreground" />
+          <span className="rounded-full bg-primary-foreground/40" />
+          <span className="rounded-full bg-primary-foreground/40" />
+          <span className="rounded-full bg-primary-foreground" />
+        </div>
         <h1 className="text-4xl font-bold tracking-tight">{t.appName}</h1>
-        <p className="mt-2 text-muted-foreground">{t.tagline}</p>
+        <p className="mt-2 text-balance text-muted-foreground">{t.tagline}</p>
+        <Link
+          href="/games"
+          className={buttonVariants({ size: 'lg', block: true, className: 'mt-6' })}
+        >
+          {t.landing.cta}
+        </Link>
       </header>
-
-      <label className="block space-y-2">
-        <span className="text-sm font-semibold">{t.home.yourName}</span>
-        <Input
-          value={name}
-          maxLength={MAX_NAME_LENGTH}
-          placeholder={t.home.namePlaceholder}
-          autoComplete="nickname"
-          onChange={(e) => setName(e.target.value)}
-        />
-      </label>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold">{t.home.pickGame}</h2>
-        {gameClients.map((g) => (
-          <button
-            key={g.id}
-            type="button"
-            onClick={() => setGameId(g.id)}
-            className={cn(
-              'block w-full rounded-2xl border-2 p-4 text-left transition-colors',
-              g.id === gameId ? 'border-primary bg-primary/5' : 'border-border bg-card',
-            )}
-          >
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-lg font-bold">{g.displayName[locale]}</span>
-              <span className="text-xs text-muted-foreground">
-                {t.home.players(g.minPlayers, g.maxPlayers)}
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">{g.description[locale]}</p>
-          </button>
-        ))}
-        <Button block size="lg" disabled={busy || !ready} onClick={create}>
-          {busy ? t.home.creating : t.home.createRoom}
-        </Button>
-      </section>
-
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        <div className="h-px flex-1 bg-border" />
-        {t.home.or}
-        <div className="h-px flex-1 bg-border" />
-      </div>
 
       <Card>
         <CardTitle className="mb-3 text-base">{t.home.joinTitle}</CardTitle>
@@ -109,6 +64,7 @@ export default function HomePage() {
             value={code}
             maxLength={ROOM_CODE_LENGTH}
             placeholder={t.home.codePlaceholder}
+            aria-label={t.home.codePlaceholder}
             autoCapitalize="characters"
             autoComplete="off"
             className="font-mono uppercase tracking-widest"
@@ -123,13 +79,50 @@ export default function HomePage() {
             {t.home.join}
           </Button>
         </form>
+        {error && (
+          <p role="alert" className="mt-3 text-sm font-semibold text-destructive">
+            {error}
+          </p>
+        )}
       </Card>
 
-      {error && (
-        <p role="alert" className="text-center text-sm font-semibold text-destructive">
-          {error}
-        </p>
-      )}
+      <section className="space-y-3">
+        <h2 className="text-lg font-bold">{t.landing.howTitle}</h2>
+        <ol className="space-y-3">
+          {steps.map(([title, body], i) => (
+            <li key={title} className="flex gap-3">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-sm font-bold text-secondary-foreground">
+                {i + 1}
+              </span>
+              <div>
+                <p className="font-semibold">{title}</p>
+                <p className="text-sm text-muted-foreground">{body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-bold">{t.landing.gamesTitle}</h2>
+        {gameClients.map((g) => (
+          <Link
+            key={g.id}
+            href={`/games?game=${g.id}`}
+            className="block rounded-2xl border border-border bg-card p-4 shadow-sm transition-colors hover:border-primary"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-lg font-bold">{g.displayName[locale]}</span>
+              <span className="text-xs text-muted-foreground">
+                {t.home.players(g.minPlayers, g.maxPlayers)}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">{g.description[locale]}</p>
+            <p className="mt-3 text-sm font-semibold text-primary">{t.landing.play} →</p>
+          </Link>
+        ))}
+        <p className="text-center text-sm text-muted-foreground">{t.landing.moreSoon}</p>
+      </section>
     </div>
   );
 }

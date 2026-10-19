@@ -31,7 +31,7 @@ export async function createRoom(
 ): Promise<{ host: Player; code: string }> {
   const host = await newPlayer(browser, name);
   const { page } = host;
-  await page.goto('/');
+  await page.goto('/games');
   const create = page.getByRole('button', { name: t.home.createRoom, exact: true });
   // รอ hydrate (ปุ่มเปิดใช้งาน) ก่อนพิมพ์ ไม่งั้น React อาจล้างค่าที่พิมพ์ไว้
   await expect(create).toBeEnabled();

@@ -3,7 +3,21 @@ import type { Messages } from './th';
 export const en: Messages = {
   appName: 'BatOnBoard',
   tagline: 'Online board games — open a link and play with friends',
+  landing: {
+    cta: 'Pick a game and create a room',
+    howTitle: 'How it works',
+    step1Title: 'Pick a game',
+    step1Body: 'Choose what to play and create a room',
+    step2Title: 'Send friends the link',
+    step2Body: 'They open it on their phone. No sign-up, no app to install',
+    step3Title: 'Play together',
+    step3Body: 'Sit together or talk over Discord/LINE. We keep time and count votes',
+    gamesTitle: 'Games',
+    play: 'Play this game',
+    moreSoon: 'More games coming soon',
+  },
   home: {
+    back: 'Home',
     yourName: 'Your nickname',
     namePlaceholder: 'e.g. Boss',
     pickGame: 'Pick a game',
