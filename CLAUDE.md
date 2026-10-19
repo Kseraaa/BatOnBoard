@@ -315,6 +315,7 @@ type SpyfallAction =
 ### Deploy
 
 - ขั้นตอนทั้งหมดอยู่ใน `docs/deploy.md`: Vercel โปรเจกต์เดียว Root Directory `apps/web` (`apps/web/vercel.json`) + Upstash Redis จาก Vercel Marketplace (ใส่ `KV_REST_API_URL` และ `KV_REST_API_TOKEN` ให้เอง)
+- ใช้ Vercel CLI ได้ด้วย `npx vercel …` (ลิงก์ไว้ที่ `apps/web` ด้วย `vercel link --project bat-on-board`) บน Windows ถ้า PowerShell บล็อก `npx.ps1` ให้ใช้ `npx.cmd` แทน
 - แผนฟรีของ Upstash จำกัดจำนวนคำสั่งต่อเดือน poll หนึ่งครั้งใช้ราว 1–2 คำสั่ง ถ้าเล่นเยอะจนใกล้โควตาให้เพิ่ม `NEXT_PUBLIC_POLL_MS`
 
 ---
@@ -330,7 +331,7 @@ type SpyfallAction =
 - [x] Game server: ห้อง, token, action pipeline, playerView, timer, reconnect (ย้ายจาก `apps/server` ไป `packages/rooms` + API ของ Next.js แล้ว)
 - [x] `apps/web`: หน้าแรก, สร้าง/เข้าห้อง, ล็อบบี้, หน้าเล่น, หน้า reveal
 - [x] Playwright e2e 4 ผู้เล่น
-- [ ] Deploy (Vercel + Upstash) — ไฟล์ตั้งค่าพร้อมแล้ว รอ deploy จริงตาม `docs/deploy.md` แล้วค่อยติ๊ก
+- [x] Deploy (Vercel + Upstash) — https://batonboard.vercel.app (โปรเจกต์ `bat-on-board` ผูกกับ GitHub: push ไป `main` = deploy production อัตโนมัติ)
 
 ### เฟส 2 — ขัดเกลา
 
