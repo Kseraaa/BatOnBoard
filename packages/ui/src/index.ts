@@ -9,9 +9,12 @@ export type { CountdownProps } from './countdown';
 export { HoldToReveal } from './hold-to-reveal';
 export type { HoldToRevealProps } from './hold-to-reveal';
 export { Input } from './input';
+export { PixelIcon } from './pixel-icon';
+export type { PixelIconProps } from './pixel-icon';
 export { formatClock, remainingMs } from './time';
 export type {
   GameClient,
+  GameMode,
   GameScreenProps,
   GameSettingsProps,
   Locale,

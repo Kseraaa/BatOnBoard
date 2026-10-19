@@ -74,6 +74,7 @@ export default function GamesPage() {
               </span>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{g.description[locale]}</p>
+            <p className="mt-2 text-xs font-semibold text-primary">{t.modes[g.mode]}</p>
           </button>
         ))}
       </section>

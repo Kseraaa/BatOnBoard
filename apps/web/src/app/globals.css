@@ -20,6 +20,9 @@
   --destructive-foreground: oklch(0.99 0 0);
   --success: oklch(0.55 0.15 150);
   --ring: oklch(0.52 0.2 275);
+  /* หน้าหลัก: หมึกเขียวเข้มบนพื้นเขียวเทาอ่อน (โหมดมืดสลับกัน) */
+  --landing-bg: #dfe5d6;
+  --landing-ink: #243127;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -37,6 +40,8 @@
     --destructive: oklch(0.65 0.2 25);
     --success: oklch(0.72 0.15 150);
     --ring: oklch(0.68 0.17 275);
+    --landing-bg: #161b17;
+    --landing-ink: #c7d3bd;
   }
 }
 
@@ -56,7 +61,10 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-ring: var(--ring);
+  --color-landing-bg: var(--landing-bg);
+  --color-landing-ink: var(--landing-ink);
   --font-sans: var(--font-sans-th), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), var(--font-sans-th), ui-monospace, monospace;
 }
 
 html,

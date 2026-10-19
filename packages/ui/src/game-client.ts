@@ -35,12 +35,22 @@ export interface GameSettingsProps {
   onChange(options: unknown): void;
 }
 
+/**
+ * วิธีสื่อสารระหว่างเล่น (หน้าหลักแยกเกมตามนี้)
+ * - `in-app`: ทุกอย่างอยู่บนจอ ไม่ต้องคุยกันนอกเว็บ
+ * - `together`: ต้องคุยกันเอง — นั่งด้วยกัน หรือ Discord/LINE call
+ */
+export type GameMode = 'in-app' | 'together';
+
 export interface GameClient {
   id: string;
   displayName: LocalizedText;
   description: LocalizedText;
   minPlayers: number;
   maxPlayers: number;
+  mode: GameMode;
+  /** ไอคอน pixel art: แต่ละแถวเป็นสตริง `#` = ช่องทึบ ตัวอื่น = ว่าง (ทุกแถวยาวเท่ากัน) */
+  icon: readonly string[];
   Screen: ComponentType<GameScreenProps>;
   Settings?: ComponentType<GameSettingsProps>;
 }

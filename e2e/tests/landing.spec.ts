@@ -11,9 +11,16 @@ test.afterEach(async () => {
 
 test('หน้าหลัก → เลือกเกม', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: t.appName })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: t.landing.aboutTitle })).toBeVisible();
+  // แยกเกมเป็น 2 หมวดตามวิธีสื่อสาร
+  await expect(
+    page.getByRole('heading', { name: t.landing.inAppTitle, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: t.landing.togetherTitle, exact: true }),
+  ).toBeVisible();
 
-  await page.getByRole('link', { name: t.landing.cta, exact: true }).click();
+  await page.getByRole('link', { name: t.landing.play, exact: true }).click();
   await page.waitForURL(/\/games$/);
   await expect(page.getByRole('heading', { level: 1, name: t.home.pickGame })).toBeVisible();
   await expect(page.getByRole('button', { name: t.home.createRoom, exact: true })).toBeEnabled();
@@ -21,10 +28,7 @@ test('หน้าหลัก → เลือกเกม', async ({ page }) =
   // การ์ดเกมบนหน้าหลักพาไปหน้าเลือกเกมโดยเลือกเกมนั้นไว้แล้ว
   await page.getByRole('link', { name: `← ${t.home.back}`, exact: true }).click();
   await page.waitForURL(/\/$/);
-  await page
-    .getByRole('link', { name: new RegExp(t.landing.play) })
-    .first()
-    .click();
+  await page.locator('a[href^="/games?game="]').first().click();
   await page.waitForURL(/\/games\?game=/);
   await expect(page.locator('button[aria-pressed="true"]')).toHaveCount(1);
 });

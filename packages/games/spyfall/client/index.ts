@@ -16,6 +16,25 @@ export const spyfallClient: GameClient = {
   description: GAME_DESCRIPTION,
   minPlayers: MIN_PLAYERS,
   maxPlayers: MAX_PLAYERS,
+  // ผู้เล่นถามตอบกันเองนอกระบบ
+  mode: 'together',
+  // หมวก แว่นดำ และปกเสื้อโค้ท
+  icon: [
+    '....#####....',
+    '...#######...',
+    '...#######...',
+    '..#########..',
+    '#############',
+    '.............',
+    '.#####.#####.',
+    '.#####.#####.',
+    '..###...###..',
+    '.............',
+    '.....###.....',
+    '.##.......##.',
+    '.###.....###.',
+    '####.....####',
+  ],
   Screen: SpyfallScreen,
   Settings: SpyfallSettings,
 };

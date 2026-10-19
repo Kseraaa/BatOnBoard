@@ -293,13 +293,13 @@ type SpyfallAction =
 
 ### Web (`apps/web`) และหน้าจอเกม
 
-- Next.js 16 (App Router, Turbopack) + React 19 + Tailwind 4 คอมโพเนนต์แบบ shadcn/ui (cva + tailwind-merge) อยู่ใน `packages/ui` (เขียนเองตามแบบ shadcn ยังไม่ได้ใช้ CLI) ใช้ฟอนต์ Noto Sans Thai และมีโหมดมืดตาม `prefers-color-scheme`
-- `packages/ui/src/game-client.ts` เป็นสัญญาระหว่างเว็บกับหน้าจอเกม: `GameClient` มี `Screen` (ได้ `view: unknown` แล้วแปลง type เอง), `Settings`, ชื่อ และจำนวนผู้เล่น เว็บลงทะเบียนเกมที่ `apps/web/src/games.ts` ที่เดียว
+- Next.js 16 (App Router, Turbopack) + React 19 + Tailwind 4 คอมโพเนนต์แบบ shadcn/ui (cva + tailwind-merge) อยู่ใน `packages/ui` (เขียนเองตามแบบ shadcn ยังไม่ได้ใช้ CLI) ใช้ฟอนต์ Noto Sans Thai (ตัวละตินแบบ mono ใช้ IBM Plex Mono ผ่าน `font-mono`) และมีโหมดมืดตาม `prefers-color-scheme`
+- `packages/ui/src/game-client.ts` เป็นสัญญาระหว่างเว็บกับหน้าจอเกม: `GameClient` มี `Screen` (ได้ `view: unknown` แล้วแปลง type เอง), `Settings`, ชื่อ, จำนวนผู้เล่น, `mode` (`in-app` = เล่นบนจอได้เลย, `together` = ต้องคุยกันเอง อยู่ด้วยกันหรือ Discord/LINE) และ `icon` (pixel art เป็นแถวสตริง `#` วาดด้วย `PixelIcon`) เว็บลงทะเบียนเกมที่ `apps/web/src/games.ts` ที่เดียว
 - ชื่อเกมที่แสดง `GAME_DISPLAY_NAME` อยู่ใน `packages/games/spyfall/client/messages.ts` ตอนนี้คือ "ใครคือสายลับ" / "Who's the Spy?" ข้อความของเกมอยู่ในไฟล์นั้น ข้อความของแพลตฟอร์มอยู่ที่ `apps/web/src/messages/{th,en}.ts` (เทสต์ตรวจว่า key ตรงกันและครอบคลุมรหัส error ทุกตัว)
 - client import ค่าคงที่จาก `rules/constants.ts` และ type จาก `rules/types.ts` เท่านั้น ไม่ import `rules/game.ts` เพื่อไม่ให้ zod ติดไปใน bundle
 - **การเชื่อมต่อ:** `lib/room-client.ts` (ใช้กับ `useSyncExternalStore`) poll ห้องของแท็บนี้ เปลี่ยนหน้าแล้วไม่หลุด ความถี่ตั้งด้วย `NEXT_PUBLIC_POLL_MS` (ค่าเริ่มต้น 1000) `serverOffset = serverNow - เวลากึ่งกลางของ request` ใช้กับ `Countdown`
 - **localStorage:** `batonboard:name` เก็บชื่อเล่น และ `batonboard:room:<CODE>` เก็บ `{ token, playerId }` เปิดห้องเดิมในแท็บที่สองของเบราว์เซอร์เดียวกันจะเป็นผู้เล่นคนเดิม ถ้าจะทดสอบหลายผู้เล่นในเครื่องเดียวต้องใช้ browser context แยก
-- **หน้า:** `/` หน้าหลัก (แนะนำแพลตฟอร์ม, วิธีเล่น, รายการเกม, ช่องใส่รหัสห้อง) → `/games` เลือกเกม + ใส่ชื่อ + สร้างห้อง (`?game=<id>` เลือกเกมไว้ให้) → `/r/<code>` ห้อง ช่องรหัสบนหน้าหลักไม่ถามชื่อ เพราะหน้าห้องถามเอง
+- **หน้า:** `/` หน้าหลัก (สไตล์ retro: พื้นเขียวเทาอ่อน หมึกเขียวเข้ม ตัวอักษร mono — สี `--landing-bg`/`--landing-ink` สลับกันในโหมดมืด มีแนะนำแพลตฟอร์ม, วิธีเล่น, ปุ่มเล่น, ช่องใส่รหัสห้อง และตารางเกมแยก 2 หมวดตาม `mode` เติมช่อง "เร็ว ๆ นี้" ให้เต็มแถว 4 ช่อง) → `/games` เลือกเกม + ใส่ชื่อ + สร้างห้อง (`?game=<id>` เลือกเกมไว้ให้) → `/r/<code>` ห้อง ช่องรหัสบนหน้าหลักไม่ถามชื่อ เพราะหน้าห้องถามเอง หน้าหลักกว้างเต็มจอ ส่วน `/games` และ `/r` อยู่ใน route group `(app)` ที่จำกัดกว้าง `max-w-md`
 - **การ์ดบทบาท:** `HoldToReveal` กดค้างเพื่อดู มีปุ่มเปิดค้าง/ซ่อน ปุ่มสำคัญสูงอย่างน้อย 48px และหน้าจอกว้างไม่เกิน `max-w-md`
 - **รัน dev:** `pnpm --filter @batonboard/web dev` (หรือ `web` ใน `.claude/launch.json` พอร์ต 3000) ไม่ต้องตั้งอะไร ห้องอยู่ในหน่วยความจำของ `next dev` ถ้าอยากใช้ Redis จริงให้ตั้ง Upstash env ใน `apps/web/.env.local` (ดู `apps/web/.env.example`)
 
