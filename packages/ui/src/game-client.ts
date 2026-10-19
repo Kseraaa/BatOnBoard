@@ -53,6 +53,11 @@ export interface GameClient {
   mode: GameMode;
   /** ไอคอน pixel art: แต่ละแถวเป็นสตริง `#` = ช่องทึบ ตัวอื่น = ว่าง (ทุกแถวยาวเท่ากัน) */
   icon: readonly string[];
+  /**
+   * ความกว้างหน้าจอระหว่างเล่น: `narrow` (ค่าเริ่มต้น) = คอลัมน์มือถือ `max-w-md`
+   * `wide` = ขยายตามจอ (เช่น เกมกระดานที่อยากให้แท็บเล็ต/คอมเห็นโต๊ะใหญ่ขึ้น)
+   */
+  layout?: 'narrow' | 'wide';
   Screen: ComponentType<GameScreenProps>;
   Settings?: ComponentType<GameSettingsProps>;
 }

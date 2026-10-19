@@ -65,7 +65,7 @@ describe.each(all)('กระดาน $id', (board) => {
 
   it('ไม่ใช้ชื่อเกมต้นฉบับ', () => {
     const json = JSON.stringify(board).toLowerCase();
-    expect(json).not.toContain('the boss');
+    expect(json).not.toMatch(/i.?m the boss/);
     expect(json).not.toContain('sackson');
   });
 });

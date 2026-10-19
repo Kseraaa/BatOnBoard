@@ -6,13 +6,22 @@
   "exports": {
     ".": "./index.ts",
     "./rules": "./rules/index.ts",
-    "./data": "./data/index.ts"
+    "./data": "./data/index.ts",
+    "./client": "./client/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@batonboard/engine": "workspace:*",
+    "@batonboard/ui": "workspace:*",
     "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "react": "^19.3.1"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
   }
 }

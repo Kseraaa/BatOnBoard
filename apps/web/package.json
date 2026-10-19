@@ -10,6 +10,7 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@batonboard/boss": "workspace:*",
     "@batonboard/engine": "workspace:*",
     "@batonboard/protocol": "workspace:*",
     "@batonboard/rooms": "workspace:*",

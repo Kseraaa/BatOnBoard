@@ -28,10 +28,11 @@ async function newPlayer(browser: Browser, name: string): Promise<Player> {
 export async function createRoom(
   browser: Browser,
   name: string,
+  game?: string,
 ): Promise<{ host: Player; code: string }> {
   const host = await newPlayer(browser, name);
   const { page } = host;
-  await page.goto('/games');
+  await page.goto(game ? `/games?game=${game}` : '/games');
   const create = page.getByRole('button', { name: t.home.createRoom, exact: true });
   // รอ hydrate (ปุ่มเปิดใช้งาน) ก่อนพิมพ์ ไม่งั้น React อาจล้างค่าที่พิมพ์ไว้
   await expect(create).toBeEnabled();

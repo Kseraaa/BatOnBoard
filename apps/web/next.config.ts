@@ -6,6 +6,7 @@ const config: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? '.next',
   // package ใน monorepo export ซอร์ส TypeScript ตรง ๆ
   transpilePackages: [
+    '@batonboard/boss',
     '@batonboard/engine',
     '@batonboard/protocol',
     '@batonboard/spyfall',

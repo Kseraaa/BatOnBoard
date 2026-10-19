@@ -1,7 +1,7 @@
 'use client';
 
 import { MAX_NAME_LENGTH } from '@batonboard/protocol';
-import { Button, Card, CardTitle, Input } from '@batonboard/ui';
+import { Button, Card, CardTitle, cn, Input } from '@batonboard/ui';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -142,7 +142,14 @@ export default function RoomPage() {
       {room.status === 'lobby' || !game ? (
         <Lobby room={room} me={snap.playerId} game={game} onLeave={() => void leave()} />
       ) : (
-        <div className="flex flex-1 flex-col gap-4">
+        <div
+          className={cn(
+            'flex flex-1 flex-col gap-4',
+            // เกมกว้าง: ออกนอกคอลัมน์ max-w-md ของ layout แล้วจำกัดกว้างเอง
+            game.layout === 'wide' &&
+              'relative left-1/2 w-[min(64rem,calc(100vw-2rem))] max-w-none -translate-x-1/2',
+          )}
+        >
           {snap.view !== null && (
             <game.Screen
               view={snap.view}
