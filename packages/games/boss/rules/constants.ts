@@ -33,6 +33,10 @@ export const MIN_NEGOTIATION_MS = 60_000;
 export const MAX_NEGOTIATION_MS = 30 * 60_000;
 /** ทุกคนตกลงแล้ว นับถอยหลังเท่านี้ก่อนปิดดีล — โอกาสสุดท้ายให้ลงไพ่หรือเปลี่ยนใจ */
 export const CLOSE_MS = 5_000;
+/** ไพ่ไปเที่ยว/ยึดดีล/ซื้อตัว รอเท่านี้ก่อนมีผล ให้คนอื่นลง "เบรก!" ทัน (poll ทุก ~1 วินาที) */
+export const PENDING_MS = 6_000;
+/** ไพ่ซื้อตัวต้องลงพร้อมกันเท่านี้ใบ */
+export const RECRUIT_SET = 3;
 
 /** รหัส error ที่ validate คืน — client แปลเป็นข้อความเอง */
 export const BossError = {
@@ -49,6 +53,12 @@ export const BossError = {
   SharesTooHigh: 'shares-too-high',
   NoPlan: 'no-plan',
   NotParticipant: 'not-participant',
+  CardPending: 'card-pending',
+  NothingToStop: 'nothing-to-stop',
+  WrongCard: 'wrong-card',
+  InvalidTarget: 'invalid-target',
+  AlreadyBoss: 'already-boss',
+  RecruitFromPool: 'recruit-from-pool',
 } as const;
 
 export type BossErrorCode = (typeof BossError)[keyof typeof BossError];

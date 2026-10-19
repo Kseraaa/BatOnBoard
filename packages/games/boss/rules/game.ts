@@ -11,6 +11,8 @@ import type {
   DealOutcome,
   EndReason,
   Family,
+  PendingPlay,
+  PlayResult,
   SpaceDef,
 } from './types';
 import {
@@ -28,6 +30,8 @@ import {
   MAX_PLAYERS,
   MIN_NEGOTIATION_MS,
   MIN_PLAYERS,
+  PENDING_MS,
+  RECRUIT_SET,
   SHORT_GAME_DEALS,
   START_HAND,
 } from './constants';
@@ -52,6 +56,18 @@ const actionSchema: z.ZodType<BossAction> = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('RESPOND'), agree: z.boolean() }),
   z.object({ type: z.literal('ABANDON') }),
+  z.object({
+    type: z.literal('PLAY_TRAVEL'),
+    card: cardSchema,
+    target: z.object({ family: familySchema, source: cardSchema }),
+  }),
+  z.object({ type: z.literal('PLAY_TAKEOVER'), card: cardSchema }),
+  z.object({
+    type: z.literal('PLAY_RECRUIT'),
+    cards: z.array(cardSchema).length(RECRUIT_SET),
+    family: familySchema,
+  }),
+  z.object({ type: z.literal('PLAY_STOP'), card: cardSchema }),
 ]);
 
 const optionsSchema: z.ZodType<BossOptions> = z.object({
@@ -138,10 +154,13 @@ function endGame(state: BossState, reason: EndReason): BossState {
   return { ...state, phase: 'ended', deal: null, result: { reason, winners: winners(state) } };
 }
 
-/** คืนไพ่บนโต๊ะ: ที่ใช้ในดีลลงกองทิ้ง ที่ไม่ได้ใช้กลับมือเจ้าของ (ถ้ายังอยู่) */
+/**
+ * คืนไพ่บนโต๊ะ: ที่ใช้ในดีลลงกองทิ้ง ที่ไม่ได้ใช้กลับมือเจ้าของ (ถ้ายังอยู่)
+ * ไพ่ที่รอผลอยู่ไม่มีผลแล้ว ลงกองทิ้ง
+ */
 function clearTable(state: BossState, deal: Deal, used: CardId[]): BossState {
   const hands = { ...state.hands };
-  const discard = [...state.discard];
+  const discard = [...state.discard, ...(deal.pending?.cards ?? [])];
   for (const { card, by } of deal.offered) {
     const hand = hands[by];
     if (used.includes(card) || hand === undefined) discard.push(card);
@@ -165,6 +184,22 @@ function breakDeal(
   };
 }
 
+/** ผู้เล่นถือไพ่ทุกใบนี้ (ไม่ซ้ำกัน) และเป็นชนิด `kind` */
+function holds(state: BossState, by: PlayerId, cards: CardId[], kind: string): string | null {
+  const hand = state.hands[by] ?? [];
+  if (new Set(cards).size !== cards.length || cards.some((c) => !hand.includes(c))) {
+    return BossError.NotInHand;
+  }
+  return cards.every((c) => cardKind(c) === kind) ? null : BossError.WrongCard;
+}
+
+function nextSeq(state: BossState): number {
+  return (state.lastPlay?.seq ?? 0) + 1;
+}
+
+/** ไพ่ที่จะลง (ยังไม่มีเวลารอผล) */
+type NewPlay = PendingPlay extends infer P ? (P extends unknown ? Omit<P, 'until'> : never) : never;
+
 export function createBoss(
   config: BossConfig,
 ): GameDefinition<BossState, BossAction, BossView, BossOptions> {
@@ -177,7 +212,83 @@ export function createBoss(
   const tableOf = (state: BossState, deal: Deal) => ({
     investors: state.investors,
     offered: deal.offered,
+    away: deal.away,
   });
+
+  /** ลงไพ่ที่ยกเลิกได้: ออกจากมือ รอผล `PENDING_MS` และล้างการตกลงทั้งหมด */
+  function playPending(state: BossState, play: NewPlay, now: number): BossState {
+    const deal = state.deal;
+    if (deal === null) return state;
+    const hand = state.hands[play.by] ?? [];
+    return {
+      ...state,
+      hands: { ...state.hands, [play.by]: hand.filter((c) => !play.cards.includes(c)) },
+      deal: {
+        ...deal,
+        pending: { ...play, until: now + PENDING_MS },
+        responses: {},
+        closeAt: null,
+      },
+    };
+  }
+
+  /** ไพ่ที่รอผลครบเวลาแล้ว: มีผลตามชนิด แล้วตรวจว่าแผนยังใช้ได้ไหม */
+  function resolvePending(state: BossState, now: number): BossState {
+    const deal = state.deal;
+    const pending = deal?.pending;
+    if (deal == null || pending == null) return state;
+    let next: Deal = { ...deal, pending: null };
+    let investors = state.investors;
+    const discard = [...state.discard, ...pending.cards];
+    let outcome: PlayResult['outcome'] = 'resolved';
+
+    switch (pending.kind) {
+      case 'travel': {
+        const { family, source } = pending.target;
+        if (source === 'investor') {
+          next = { ...next, away: [...next.away, family] };
+        } else if (next.offered.some((o) => o.card === source)) {
+          next = { ...next, offered: next.offered.filter((o) => o.card !== source) };
+          discard.push(source);
+        } else {
+          outcome = 'fizzled';
+        }
+        break;
+      }
+      case 'takeover':
+        next = {
+          ...next,
+          boss: pending.by,
+          plan: null,
+          // บอสใหม่ได้เวลาเจรจาเต็มอีกครั้ง
+          deadline: state.negotiationMs === null ? null : now + state.negotiationMs,
+        };
+        break;
+      case 'recruit':
+        investors = { ...investors, [pending.family]: pending.by };
+        break;
+    }
+
+    const resolved: BossState = {
+      ...state,
+      investors,
+      discard,
+      deal: next,
+      lastPlay: { ...pending, seq: nextSeq(state), outcome, stoppedBy: null },
+    };
+    // ไพ่ที่มีผลอาจทำให้แผนเดิมใช้ไม่ได้ (เช่น ตระกูลในแผนไปเที่ยว) บอสต้องเสนอใหม่
+    const plan = next.plan;
+    const broken =
+      plan !== null &&
+      checkPlan(
+        spaceAt(next.space),
+        tableOf(resolved, next),
+        plan,
+        next.boss,
+        payoutOf(resolved, next),
+      ) !== null;
+    return broken ? { ...resolved, deal: { ...next, plan: null } } : resolved;
+  }
 
   function closeDeal(state: BossState): BossState {
     const deal = state.deal;
@@ -269,6 +380,7 @@ export function createBoss(
         deal: null,
         lastRoll: null,
         lastDeal: null,
+        lastPlay: null,
         result: null,
       };
     },
@@ -300,6 +412,7 @@ export function createBoss(
         case 'PROPOSE':
           if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
           if (by !== deal.boss) return BossError.NotBoss;
+          if (deal.pending !== null) return BossError.CardPending;
           return checkPlan(
             spaceAt(deal.space),
             tableOf(state, deal),
@@ -310,6 +423,7 @@ export function createBoss(
         case 'RESPOND':
           if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
           if (deal.plan === null) return BossError.NoPlan;
+          if (deal.pending !== null) return BossError.CardPending;
           if (by === deal.boss || !participants(tableOf(state, deal), deal.plan).includes(by)) {
             return BossError.NotParticipant;
           }
@@ -317,6 +431,48 @@ export function createBoss(
         case 'ABANDON':
           if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
           return by === deal.boss ? null : BossError.NotBoss;
+        case 'PLAY_TRAVEL': {
+          if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
+          if (deal.pending !== null) return BossError.CardPending;
+          const err = holds(state, by, [action.card], 'travel');
+          if (err !== null) return err;
+          const { family, source } = action.target;
+          const cardFor = cardFamily(action.card);
+          // ไพ่ไปเที่ยวประจำตระกูลใช้ได้กับตระกูลนั้นเท่านั้น (`travel-any-*` ใช้ได้ทุกตระกูล)
+          if (cardFor !== null && cardFor !== family) return BossError.WrongCard;
+          if (!spaceFamilies(spaceAt(deal.space)).includes(family)) {
+            return BossError.FamilyNotInDeal;
+          }
+          if (source === 'investor') {
+            return state.investors[family] === null || deal.away.includes(family)
+              ? BossError.InvalidTarget
+              : null;
+          }
+          return deal.offered.some((o) => o.card === source) && cardFamily(source) === family
+            ? null
+            : BossError.InvalidTarget;
+        }
+        case 'PLAY_TAKEOVER':
+          if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
+          if (deal.pending !== null) return BossError.CardPending;
+          if (by === deal.boss) return BossError.AlreadyBoss;
+          return holds(state, by, [action.card], 'takeover');
+        case 'PLAY_RECRUIT': {
+          if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
+          if (deal.pending !== null) return BossError.CardPending;
+          const err = holds(state, by, action.cards, 'recruit');
+          if (err !== null) return err;
+          // มีนักลงทุนเหลือกองกลาง ต้องซื้อจากกองกลางก่อน ไม่งั้นซื้อจากคนอื่น
+          const pool = FAMILIES.filter((f) => state.investors[f] === null);
+          if (pool.length > 0) {
+            return pool.includes(action.family) ? null : BossError.RecruitFromPool;
+          }
+          return state.investors[action.family] === by ? BossError.InvalidTarget : null;
+        }
+        case 'PLAY_STOP':
+          if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
+          if (deal.pending === null) return BossError.NothingToStop;
+          return holds(state, by, [action.card], 'stop');
       }
     },
 
@@ -340,6 +496,8 @@ export function createBoss(
               space: state.marker,
               boss: by,
               offered: [],
+              away: [],
+              pending: null,
               plan: null,
               responses: {},
               deadline: state.negotiationMs === null ? null : now + state.negotiationMs,
@@ -380,6 +538,35 @@ export function createBoss(
           );
         case 'ABANDON':
           return breakDeal(state, 'abandoned', leftOf(state.players, by));
+        case 'PLAY_TRAVEL':
+          return playPending(
+            state,
+            { kind: 'travel', by, cards: [action.card], target: action.target },
+            now,
+          );
+        case 'PLAY_TAKEOVER':
+          return playPending(state, { kind: 'takeover', by, cards: [action.card] }, now);
+        case 'PLAY_RECRUIT':
+          return playPending(
+            state,
+            { kind: 'recruit', by, cards: action.cards, family: action.family },
+            now,
+          );
+        case 'PLAY_STOP': {
+          const pending = deal?.pending;
+          if (deal == null || pending == null) return state;
+          // เบรกยกเลิกไพ่ที่รอผล ทั้งคู่ลงกองทิ้ง (เบรกด้วยกันยกเลิกไม่ได้ จึงไม่ต้องรอ)
+          return {
+            ...state,
+            hands: {
+              ...state.hands,
+              [by]: (state.hands[by] ?? []).filter((c) => c !== action.card),
+            },
+            discard: [...state.discard, ...pending.cards, action.card],
+            deal: { ...deal, pending: null },
+            lastPlay: { ...pending, seq: nextSeq(state), outcome: 'stopped', stoppedBy: by },
+          };
+        }
       }
     },
 
@@ -407,6 +594,8 @@ export function createBoss(
           space: deal.space,
           boss: deal.boss,
           offered: deal.offered,
+          away: deal.away,
+          pending: deal.pending,
           plan: deal.plan,
           responses: deal.responses,
           deadline: deal.deadline,
@@ -415,6 +604,7 @@ export function createBoss(
         },
         lastRoll: state.lastRoll,
         lastDeal: state.lastDeal,
+        lastPlay: state.lastPlay,
         result: state.result,
       };
     },
@@ -422,13 +612,16 @@ export function createBoss(
     nextDeadline(state) {
       const deal = state.deal;
       if (state.phase !== 'deal' || deal === null) return null;
-      const times = [deal.closeAt, deal.deadline].filter((t): t is number => t !== null);
+      const times = [deal.pending?.until ?? null, deal.closeAt, deal.deadline].filter(
+        (t): t is number => t !== null,
+      );
       return times.length === 0 ? null : Math.min(...times);
     },
 
     onDeadline(state, now) {
       const deal = state.deal;
       if (state.phase !== 'deal' || deal === null) return state;
+      if (deal.pending !== null && now >= deal.pending.until) return resolvePending(state, now);
       if (deal.closeAt !== null && now >= deal.closeAt) return closeDeal(state);
       if (deal.deadline !== null && now >= deal.deadline) {
         return breakDeal(state, 'time-up', leftOf(state.players, deal.boss));
@@ -463,15 +656,18 @@ export function createBoss(
       if (deal !== null) {
         const wasMember =
           deal.plan !== null && participants(tableOf(state, deal), deal.plan).includes(player);
+        const pendingGone = deal.pending?.by === player;
         left = {
           ...left,
           discard: [
             ...left.discard,
             ...deal.offered.filter((o) => o.by === player).map((o) => o.card),
+            ...(pendingGone ? (deal.pending?.cards ?? []) : []),
           ],
           deal: {
             ...deal,
             offered: deal.offered.filter((o) => o.by !== player),
+            pending: pendingGone ? null : deal.pending,
             // แผนที่มีคนที่ออกใช้ต่อไม่ได้ บอสต้องเสนอใหม่
             ...(wasMember ? { plan: null, responses: {}, closeAt: null } : {}),
           },

@@ -14,6 +14,8 @@ export {
   MAX_PLAYERS,
   MIN_NEGOTIATION_MS,
   MIN_PLAYERS,
+  PENDING_MS,
+  RECRUIT_SET,
   SHORT_GAME_DEALS,
   START_HAND,
 } from './constants';
@@ -36,9 +38,12 @@ export type {
   EndReason,
   Family,
   GameLength,
+  PendingPlay,
   Phase,
   Plan,
+  PlayResult,
   Roll,
   SlotSource,
   SpaceDef,
+  TravelTarget,
 } from './types';

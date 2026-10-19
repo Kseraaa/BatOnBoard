@@ -56,11 +56,35 @@ export interface Plan {
   shares: Record<PlayerId, number>;
 }
 
+/** เป้าของไพ่ไปเที่ยว: นักลงทุนถาวรของตระกูลนั้น หรือไพ่ตระกูลบนโต๊ะ */
+export interface TravelTarget {
+  family: Family;
+  source: SlotSource;
+}
+
+/** ไพ่ที่ลงแล้วแต่ยังไม่มีผล รอให้คนอื่นลง "เบรก!" ได้จนถึง `until` */
+export type PendingPlay = { by: PlayerId; cards: CardId[]; until: number } & (
+  | { kind: 'travel'; target: TravelTarget }
+  | { kind: 'takeover' }
+  | { kind: 'recruit'; family: Family }
+);
+
+/** ไพ่ที่ตัดสินแล้วล่าสุด (client ใช้ทำข่าวและอนิเมชัน) */
+export type PlayResult = PendingPlay & {
+  seq: number;
+  /** `fizzled` = เป้าหายไปก่อนมีผล เช่น ไพ่ตระกูลถูกส่งไปเที่ยวก่อน */
+  outcome: 'resolved' | 'stopped' | 'fizzled';
+  stoppedBy: PlayerId | null;
+};
+
 export interface Deal {
   space: number;
   boss: PlayerId;
   /** ไพ่ตระกูลที่วางบนโต๊ะ — อยู่จนจบดีลแม้ไม่ได้ใช้ */
   offered: { card: CardId; by: PlayerId }[];
+  /** ตระกูลที่นักลงทุนถาวรถูกส่งไปเที่ยว ใช้ในดีลนี้ไม่ได้ */
+  away: Family[];
+  pending: PendingPlay | null;
   plan: Plan | null;
   /** คำตอบของผู้ร่วมดีลต่อแผนล่าสุด */
   responses: Record<PlayerId, boolean>;
@@ -122,6 +146,7 @@ export interface BossState {
   deal: Deal | null;
   lastRoll: Roll | null;
   lastDeal: DealOutcome | null;
+  lastPlay: PlayResult | null;
   result: BossResult | null;
 }
 
@@ -132,12 +157,18 @@ export type BossAction =
   | { type: 'OFFER_CLAN'; card: CardId }
   | { type: 'PROPOSE'; plan: Plan }
   | { type: 'RESPOND'; agree: boolean }
-  | { type: 'ABANDON' };
+  | { type: 'ABANDON' }
+  | { type: 'PLAY_TRAVEL'; card: CardId; target: TravelTarget }
+  | { type: 'PLAY_TAKEOVER'; card: CardId }
+  | { type: 'PLAY_RECRUIT'; cards: CardId[]; family: Family }
+  | { type: 'PLAY_STOP'; card: CardId };
 
 export interface DealView {
   space: number;
   boss: PlayerId;
   offered: { card: CardId; by: PlayerId }[];
+  away: Family[];
+  pending: PendingPlay | null;
   plan: Plan | null;
   responses: Record<PlayerId, boolean>;
   deadline: number | null;
@@ -168,5 +199,6 @@ export interface BossView {
   deal: DealView | null;
   lastRoll: Roll | null;
   lastDeal: DealOutcome | null;
+  lastPlay: PlayResult | null;
   result: BossResult | null;
 }

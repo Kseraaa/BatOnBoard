@@ -11,6 +11,8 @@ import type { CardId, Family, Plan, SpaceDef } from './types';
 export interface Table {
   investors: Record<Family, PlayerId | null>;
   offered: { card: CardId; by: PlayerId }[];
+  /** ตระกูลที่นักลงทุนถาวรไปเที่ยว */
+  away: Family[];
 }
 
 /** ตระกูลที่ช่องนี้ใช้ได้ (ต้องมี + ให้เลือก) */
@@ -24,7 +26,7 @@ export function slotOwner(
   family: Family,
   source: Plan['slots'][number]['source'],
 ): PlayerId | null {
-  if (source === 'investor') return table.investors[family];
+  if (source === 'investor') return table.away.includes(family) ? null : table.investors[family];
   if (cardFamily(source) !== family) return null;
   return table.offered.find((o) => o.card === source)?.by ?? null;
 }

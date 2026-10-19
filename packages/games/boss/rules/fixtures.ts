@@ -93,5 +93,20 @@ export function allCards(state: BossState): string[] {
     ...state.discard,
     ...Object.values(state.hands).flat(),
     ...(state.deal?.offered.map((o) => o.card) ?? []),
+    ...(state.deal?.pending?.cards ?? []),
   ];
+}
+
+/** ย้ายไพ่จากที่ไหนก็ได้ (กอง, กองทิ้ง, มือคนอื่น) มาไว้บนมือ `player` — ไพ่ทั้งเกมยังครบเท่าเดิม */
+export function give(state: BossState, player: PlayerId, cards: string[]): BossState {
+  const hands = Object.fromEntries(
+    Object.entries(state.hands).map(([p, hand]) => [p, hand.filter((c) => !cards.includes(c))]),
+  );
+  hands[player] = [...(hands[player] ?? []), ...cards];
+  return {
+    ...state,
+    hands,
+    deck: state.deck.filter((c) => !cards.includes(c)),
+    discard: state.discard.filter((c) => !cards.includes(c)),
+  };
 }

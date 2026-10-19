@@ -30,9 +30,10 @@ function dealOf(state: BossState): Deal {
 /** ผู้ร่วมดีลตามแผนที่ไม่ใช่บอส */
 function others(state: BossState, plan: Plan): string[] {
   const deal = dealOf(state);
-  return participants({ investors: state.investors, offered: deal.offered }, plan).filter(
-    (p) => p !== deal.boss,
-  );
+  return participants(
+    { investors: state.investors, offered: deal.offered, away: deal.away },
+    plan,
+  ).filter((p) => p !== deal.boss);
 }
 
 /** เสนอแผนใช้นักลงทุนถาวร ให้ผู้ร่วมดีลคนละ `each` แล้วทุกคนตกลง */
