@@ -67,6 +67,38 @@
   --font-mono: var(--font-plex-mono), var(--font-sans-th), ui-monospace, monospace;
 }
 
+/* อนิเมชันที่หน้าจอเกมใช้ร่วมกัน (ทุกที่ที่ใช้ต้องมี motion-reduce:animate-none) */
+@theme {
+  --animate-scan: scan 7s linear infinite;
+  --animate-rise: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-stamp: stamp 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+
+  @keyframes scan {
+    from {
+      transform: translateY(-10vh);
+    }
+    to {
+      transform: translateY(110vh);
+    }
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+  @keyframes stamp {
+    from {
+      opacity: 0;
+      transform: scale(1.8) rotate(-8deg);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) rotate(-2deg);
+    }
+  }
+}
+
 html,
 body {
   background: var(--background);

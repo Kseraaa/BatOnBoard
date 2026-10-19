@@ -8,18 +8,25 @@ import type {
   SpyfallResult,
   SpyfallState,
   SpyfallView,
+  VoteResult,
   WinReason,
 } from './types';
 import {
+  CUSTOM_ID_PATTERN,
   DEFAULT_DURATION_MS,
   FINAL_VOTE_MS,
+  MAX_CUSTOM_LOCATIONS,
+  MAX_CUSTOM_ROLES,
+  MAX_CUSTOM_TEXT,
   MAX_DURATION_MS,
   MAX_PLAYERS,
+  MIN_DECK_SIZE,
   MIN_DURATION_MS,
   MIN_PLAYERS,
   SpyfallError,
   VOTE_MS,
 } from './constants';
+import { buildDeck } from './deck';
 
 const idSchema = z.string().min(1).max(64);
 
@@ -31,9 +38,46 @@ const actionSchema: z.ZodType<SpyfallAction> = z.discriminatedUnion('type', [
   z.object({ type: z.literal('NEXT_ROUND') }),
 ]);
 
-const optionsSchema: z.ZodType<SpyfallOptions> = z.object({
-  durationMs: z.number().int().min(MIN_DURATION_MS).max(MAX_DURATION_MS),
-});
+const textSchema = z.string().trim().min(1).max(MAX_CUSTOM_TEXT);
+
+const unique = (values: string[]) =>
+  new Set(values.map((v) => v.toLowerCase())).size === values.length;
+
+/** ตั้งค่าห้องมาจาก client: ตรวจทั้งรูปแบบ และว่ายังเหลือสถานที่พอเล่น */
+function optionsSchemaFor(builtin: LocationDef[]): z.ZodType<SpyfallOptions> {
+  const builtinIds = new Set(builtin.map((l) => l.id));
+  return z
+    .object({
+      durationMs: z.number().int().min(MIN_DURATION_MS).max(MAX_DURATION_MS),
+      disabled: z.array(idSchema).max(builtin.length).optional(),
+      custom: z
+        .array(
+          z.object({
+            id: z.string().regex(CUSTOM_ID_PATTERN),
+            name: textSchema,
+            roles: z.array(textSchema).min(1).max(MAX_CUSTOM_ROLES),
+          }),
+        )
+        .max(MAX_CUSTOM_LOCATIONS)
+        .optional(),
+    })
+    .superRefine((options, ctx) => {
+      const disabled = options.disabled ?? [];
+      const custom = options.custom ?? [];
+      if (!unique(disabled) || disabled.some((id) => !builtinIds.has(id))) {
+        ctx.addIssue({ code: 'custom', message: 'disabled must be unique built-in ids' });
+      }
+      if (!unique(custom.map((c) => c.id)) || !unique(custom.map((c) => c.name))) {
+        ctx.addIssue({ code: 'custom', message: 'custom ids and names must be unique' });
+      }
+      if (custom.some((c) => !unique(c.roles))) {
+        ctx.addIssue({ code: 'custom', message: 'roles must be unique within a location' });
+      }
+      if (builtin.length - disabled.length + custom.length < MIN_DECK_SIZE) {
+        ctx.addIssue({ code: 'custom', message: `need at least ${MIN_DECK_SIZE} locations` });
+      }
+    });
+}
 
 function assertValidConfig({ locations }: SpyfallConfig): void {
   if (locations.length < 2) throw new Error('spyfall needs at least 2 locations');
@@ -49,14 +93,14 @@ function assertValidConfig({ locations }: SpyfallConfig): void {
 
 function deal(
   players: PlayerId[],
-  locations: LocationDef[],
+  deck: LocationDef[],
   rng: Rng,
   now: number,
   durationMs: number,
   scores: Record<PlayerId, number>,
   previousLocationId: string | null,
 ): SpyfallState {
-  const candidates = locations.filter((l) => l.id !== previousLocationId);
+  const candidates = deck.filter((l) => l.id !== previousLocationId);
   const location = candidates[rng.int(candidates.length)] as LocationDef;
   const spy = players[rng.int(players.length)] as PlayerId;
   const roles = rng.shuffle(location.roles);
@@ -67,7 +111,9 @@ function deal(
     players,
     spy,
     locationId: location.id,
-    roles: Object.fromEntries(agents.map((p, i) => [p, roles[i] as string])),
+    // สถานที่ที่สร้างเองอาจมีบทบาทน้อยกว่าจำนวนคน จึงวนซ้ำ (ชุดมาตรฐานมีพอเสมอ)
+    roles: Object.fromEntries(agents.map((p, i) => [p, roles[i % roles.length] as string])),
+    deck,
     firstAsker: players[rng.int(players.length)] as PlayerId,
     durationMs,
     deadline: now + durationMs,
@@ -75,6 +121,7 @@ function deal(
     usedAccusation: [],
     finalTurns: [],
     vote: null,
+    lastVote: null,
     spyGuess: null,
     result: null,
     scores: Object.fromEntries(players.map((p) => [p, scores[p] ?? 0])),
@@ -85,6 +132,7 @@ function endRound(
   state: SpyfallState,
   winner: SpyfallResult['winner'],
   reason: WinReason,
+  lastVote: VoteResult | null = null,
 ): SpyfallState {
   const winners =
     winner === null ? [] : state.players.filter((p) => (p === state.spy) === (winner === 'spy'));
@@ -97,6 +145,7 @@ function endRound(
     deadline: null,
     pausedRemaining: null,
     vote: null,
+    lastVote,
     result: { winner, reason },
     scores,
   };
@@ -110,6 +159,20 @@ function checkFinalVoteDone(state: SpyfallState): SpyfallState {
   return state;
 }
 
+/** สรุปโหวตที่กำลังตัดสินเป็นข้อมูลสาธารณะ */
+function voteResult(state: SpyfallState, passed: boolean): VoteResult | null {
+  const vote = state.vote;
+  if (vote === null) return null;
+  const voters = state.players.filter((p) => p !== vote.accused);
+  return {
+    accuser: vote.accuser,
+    accused: vote.accused,
+    final: vote.final,
+    ballots: Object.fromEntries(voters.map((p) => [p, vote.ballots[p] ?? null])),
+    passed,
+  };
+}
+
 /** โหวตไม่ผ่าน: กลับ phase เดิมและเดินเวลาต่อจากที่เหลือ */
 function failVote(state: SpyfallState, now: number): SpyfallState {
   const final = state.vote?.final ?? false;
@@ -117,6 +180,7 @@ function failVote(state: SpyfallState, now: number): SpyfallState {
     ...state,
     phase: final ? 'final-vote' : 'questioning',
     vote: null,
+    lastVote: voteResult(state, false),
     deadline: now + (state.pausedRemaining ?? 0),
     pausedRemaining: null,
   });
@@ -129,9 +193,10 @@ function resolveVote(state: SpyfallState, now: number): SpyfallState {
   const voters = state.players.filter((p) => p !== vote.accused);
   if (voters.some((p) => vote.ballots[p] === false)) return failVote(state, now);
   if (voters.every((p) => vote.ballots[p] === true)) {
+    const result = voteResult(state, true);
     return vote.accused === state.spy
-      ? endRound(state, 'agents', 'spy-caught')
-      : endRound(state, 'spy', 'innocent-convicted');
+      ? endRound(state, 'agents', 'spy-caught', result)
+      : endRound(state, 'spy', 'innocent-convicted', result);
   }
   return state;
 }
@@ -140,18 +205,18 @@ export function createSpyfall(
   config: SpyfallConfig,
 ): GameDefinition<SpyfallState, SpyfallAction, SpyfallView, SpyfallOptions> {
   assertValidConfig(config);
-  const locationIds = new Set(config.locations.map((l) => l.id));
 
   return {
     id: 'spyfall',
     minPlayers: MIN_PLAYERS,
     maxPlayers: MAX_PLAYERS,
     actionSchema,
-    optionsSchema,
+    optionsSchema: optionsSchemaFor(config.locations),
     defaultOptions: { durationMs: DEFAULT_DURATION_MS },
 
     setup(players, options, rng, now) {
-      return deal(players, config.locations, rng, now, options.durationMs, {}, null);
+      const deck = buildDeck(config.locations, options);
+      return deal(players, deck, rng, now, options.durationMs, {}, null);
     },
 
     validate(state, action, by, ctx) {
@@ -183,7 +248,9 @@ export function createSpyfall(
           // final-vote ถือเป็นช่วงโหวต สายลับเดาไม่ได้
           if (state.phase !== 'questioning') return SpyfallError.WrongPhase;
           if (by !== state.spy) return SpyfallError.NotSpy;
-          if (!locationIds.has(action.locationId)) return SpyfallError.UnknownLocation;
+          if (!state.deck.some((l) => l.id === action.locationId)) {
+            return SpyfallError.UnknownLocation;
+          }
           return null;
         case 'NEXT_ROUND':
           if (state.phase !== 'reveal') return SpyfallError.WrongPhase;
@@ -235,7 +302,7 @@ export function createSpyfall(
         case 'NEXT_ROUND':
           return deal(
             state.players,
-            config.locations,
+            state.deck,
             rng,
             now,
             state.durationMs,
@@ -270,6 +337,7 @@ export function createSpyfall(
           voted: Object.keys(state.vote.ballots).filter((p) => state.players.includes(p)),
           deadline: state.vote.deadline,
         },
+        lastVote: state.lastVote,
         result: state.result,
         reveal: revealed
           ? {

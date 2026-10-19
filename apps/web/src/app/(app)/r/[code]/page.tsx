@@ -147,6 +147,7 @@ export default function RoomPage() {
             <game.Screen
               view={snap.view}
               players={room.players}
+              options={room.options}
               me={snap.playerId}
               hostId={room.hostId}
               serverOffset={snap.serverOffset}

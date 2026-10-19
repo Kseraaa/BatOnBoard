@@ -14,9 +14,21 @@ export interface SpyfallConfig {
   locations: LocationDef[];
 }
 
+/** สถานที่ที่ host พิมพ์เอง — ชื่อเป็นภาษาเดียวตามที่พิมพ์ */
+export interface CustomLocation {
+  /** custom-<เลข> ไม่ซ้ำกัน */
+  id: string;
+  name: string;
+  /** 1–7 บทบาท ถ้าน้อยกว่าจำนวนคนจะวนซ้ำ */
+  roles: string[];
+}
+
 export interface SpyfallOptions {
   /** เวลาช่วงถามตอบ (ms) */
   durationMs: number;
+  /** id สถานที่ในชุดมาตรฐานที่ไม่ใช้ */
+  disabled?: string[];
+  custom?: CustomLocation[];
 }
 
 export type WinReason =
@@ -45,6 +57,16 @@ export interface Vote {
   final: boolean;
 }
 
+/** ผลโหวตครั้งล่าสุดของรอบ — เปิดเผยได้หลังตัดสินแล้วเท่านั้น */
+export interface VoteResult {
+  accuser: PlayerId;
+  accused: PlayerId;
+  final: boolean;
+  /** ทุกคนยกเว้นผู้ถูกกล่าวหา: true/false = โหวต, null = ไม่ได้โหวต (หมดเวลาหรือตัดสินก่อน) */
+  ballots: Record<PlayerId, boolean | null>;
+  passed: boolean;
+}
+
 export interface SpyfallState {
   phase: Phase;
   players: PlayerId[];
@@ -52,6 +74,8 @@ export interface SpyfallState {
   locationId: string;
   /** บทบาทของคนที่ไม่ใช่สายลับ */
   roles: Record<PlayerId, string>;
+  /** สถานที่ที่ใช้ได้ในเกมนี้ (ชุดมาตรฐานที่เปิดอยู่ + ที่สร้างเอง) — ไม่ส่งใน view */
+  deck: LocationDef[];
   firstAsker: PlayerId;
   /** เวลาช่วงถามตอบจากตั้งค่าห้อง เก็บไว้ใช้รอบถัดไป */
   durationMs: number;
@@ -64,6 +88,8 @@ export interface SpyfallState {
   /** คนที่เสนอชื่อหรือ PASS แล้วใน final-vote */
   finalTurns: PlayerId[];
   vote: Vote | null;
+  /** ผลโหวตครั้งล่าสุดของรอบ (ล้างตอนแจกไพ่ใหม่ และตอนจบรอบด้วยเหตุอื่นที่ไม่ใช่โหวต) */
+  lastVote: VoteResult | null;
   /** สถานที่ที่สายลับเดา (ถ้ามี) */
   spyGuess: string | null;
   result: SpyfallResult | null;
@@ -94,6 +120,8 @@ export interface SpyfallView {
   finalTurns: PlayerId[];
   /** สถานะโหวต: เห็นว่าใครโหวตแล้ว แต่ไม่เห็นว่าโหวตอะไร */
   vote: { accuser: PlayerId; accused: PlayerId; voted: PlayerId[]; deadline: number } | null;
+  /** ผลโหวตที่ตัดสินแล้ว (รวมว่าใครโหวตอะไร) */
+  lastVote: VoteResult | null;
   result: SpyfallResult | null;
   /** มีเฉพาะ phase reveal */
   reveal: {

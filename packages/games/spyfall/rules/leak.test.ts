@@ -21,7 +21,10 @@ function secretPhases(n: number, seed: number): [string, SpyfallState][] {
   const accusingAgent = act(questioning, questioning.spy, { type: 'ACCUSE', target: b });
   const finalVote = timeUp(questioning);
   const finalVoting = act(finalVote, a, { type: 'ACCUSE', target: b });
+  // โหวตไม่ผ่าน (มีผลโหวตล่าสุดใน view) — กรณี 3 คน b อาจเป็นคนเดียวที่โหวตได้
+  const failed = act(accusingAgent, a, { type: 'BALLOT', agree: false });
   return [
+    ['after failed vote', failed],
     ['questioning', questioning],
     ['voting (สายลับถูกกล่าวหา)', accusingSpy],
     ['voting (สายลับเป็นคนกล่าวหา)', accusingAgent],
@@ -75,7 +78,8 @@ describe('playerView ของผู้เล่นทั่วไป', () => {
           }
 
           // ทุกที่ที่ id ของสายลับโผล่ใน view ต้องเป็นข้อมูลสาธารณะ
-          // (รายชื่อผู้เล่น, คะแนน, คนถามคนแรก, คนที่กล่าวหา/ถูกกล่าวหา/ใช้สิทธิ์แล้ว) — ลบออกแล้วต้องไม่เหลือ
+          // (รายชื่อผู้เล่น, คะแนน, คนถามคนแรก, คนที่กล่าวหา/ถูกกล่าวหา/ใช้สิทธิ์แล้ว, ผลโหวตที่ตัดสินแล้ว)
+          // — ลบออกแล้วต้องไม่เหลือ
           const publicOnly = JSON.stringify({
             ...view,
             players: [],
@@ -84,6 +88,12 @@ describe('playerView ของผู้เล่นทั่วไป', () => {
             usedAccusation: [],
             finalTurns: [],
             vote: view.vote && { ...view.vote, accuser: null, accused: null, voted: [] },
+            lastVote: view.lastVote && {
+              ...view.lastVote,
+              accuser: null,
+              accused: null,
+              ballots: {},
+            },
           });
           expect(publicOnly, phase).not.toContain(state.spy);
         }

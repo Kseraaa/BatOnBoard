@@ -1,7 +1,7 @@
 'use client';
 
 import type { RoomStateMessage } from '@batonboard/protocol';
-import { Badge, Button, Card, CardTitle } from '@batonboard/ui';
+import { Badge, Button, Card, CardTitle, PixelAvatar } from '@batonboard/ui';
 import type { GameClient } from '@batonboard/ui';
 import { useState } from 'react';
 import { getRoomClient } from '@/lib/room-client';
@@ -73,10 +73,13 @@ export function Lobby({ room, me, game, onLeave }: LobbyProps) {
         <ul className="divide-y divide-border">
           {room.players.map((p) => (
             <li key={p.id} className="flex min-h-12 items-center gap-2 py-2">
-              <span
-                className={`h-2.5 w-2.5 shrink-0 rounded-full ${p.online ? 'bg-success' : 'bg-muted-foreground/40'}`}
-                aria-hidden
-              />
+              <span className="relative">
+                <PixelAvatar name={p.name} />
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card ${p.online ? 'bg-success' : 'bg-muted-foreground/60'}`}
+                  aria-hidden
+                />
+              </span>
               <span className="flex-1 truncate font-semibold">{p.name}</span>
               {p.id === room.hostId && <Badge variant="secondary">{t.room.host}</Badge>}
               {p.id === me && <Badge variant="outline">{t.room.you}</Badge>}

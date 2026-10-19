@@ -241,7 +241,7 @@ type SpyfallAction =
 
 1. **สิทธิ์ host:** ห้องเป็นเจ้าของข้อมูล host แล้วส่ง `ctx: { hostId }` เข้า `validate` เกมใช้ข้อมูลนี้ตรวจ action ที่ host เท่านั้นทำได้ (เช่น `NEXT_ROUND`) แพลตฟอร์มไม่ต้องรู้ว่า action ไหนเป็นของ host
 2. **ไม่มี phase `lobby` ในเกม:** ล็อบบี้เป็นสถานะของห้อง `room:start` เรียก `setup()` แล้วเข้า `questioning` ทันที ตัด `START_ROUND` ออก `NEXT_ROUND` (ทำได้ใน `reveal`) สุ่มสายลับ สถานที่ และบทบาทใหม่ด้วย `rng` ที่ส่งเข้า `apply`
-3. **รายชื่อสถานที่อ้างอิงไม่อยู่ใน view:** client import รายชื่อจาก `spyfall/data` แบบ static ส่วน `playerView` ส่งแค่ `locationSetId` เพื่อให้เทสต์ "view ของสายลับไม่มี id สถานที่ปัจจุบัน" เป็นจริงได้ ถ้าเฟส 2 มีชุดสถานที่ที่ผู้เล่นสร้างเอง ให้ส่งรายชื่อผ่าน `room` ใน snapshot ซึ่งเป็นข้อมูลสาธารณะ ไม่ส่งใน view
+3. **รายชื่อสถานที่อ้างอิงไม่อยู่ใน view:** client import รายชื่อจาก `spyfall/data` แบบ static ส่วน `playerView` ส่งแค่ `locationSetId` เพื่อให้เทสต์ "view ของสายลับไม่มี id สถานที่ปัจจุบัน" เป็นจริงได้ สถานที่ที่ host สร้างเองหรือปิดไว้ก็ส่งผ่าน `room.options` ใน snapshot ซึ่งเป็นข้อมูลสาธารณะ ไม่ส่งใน view (ดูหัวข้อ "เลือกและสร้างสถานที่เอง")
 4. **กลไก `final-vote`:** ผู้เล่นทุกคนได้สิทธิ์ใหม่ 1 ครั้งในช่วงนี้ (ไม่สน `usedAccusation`) จะ `ACCUSE` หรือ `PASS` ก็ได้ เมื่อมีคนเสนอชื่อ จะเข้าโหวตเอกฉันท์เหมือนช่วงปกติ ถ้าผ่านก็ไป `reveal` ถ้าไม่ผ่านก็กลับ `final-vote` เมื่อทุกคนใช้สิทธิ์ครบ (`finalTurns` ครบ) แล้วยังไม่มีใครถูกจับ สายลับชนะ สายลับเดาสถานที่ใน `final-vote` ไม่ได้
 5. **ใครต้องโหวต:** ผู้กล่าวหาถือว่าเห็นด้วยอัตโนมัติ ผู้ถูกกล่าวหาโหวตไม่ได้ ผู้เล่นที่เหลือต้องโหวต ถ้าโหวตไม่ผ่าน ผู้กล่าวหาเสียสิทธิ์ของรอบนั้น ถ้ามีคนกด "ไม่เห็นด้วย" ให้ตัดสินว่าไม่ผ่านทันทีโดยไม่ต้องรอคนที่เหลือ
 6. **ผู้เล่นหลุดหรือถูกเตะกลางเกม:**
@@ -263,11 +263,17 @@ type SpyfallAction =
 
 - `rules/` ไม่ import `data/` แต่เป็น factory `createSpyfall({ locationSetId, locations })` เทสต์จึงใช้ชุดสถานที่จำลอง (`rules/fixtures.ts`) ได้ ส่วนเกมที่ลงทะเบียนจริงจะสร้างจาก data ในข้อ 4 factory ตรวจว่ามีอย่างน้อย 2 สถานที่ id ไม่ซ้ำ และแต่ละสถานที่มีบทบาทไม่ซ้ำอย่างน้อย 7 อย่าง (= `MAX_PLAYERS - 1`)
 - ค่าคงที่: ถามตอบ 8 นาที (ปรับได้ 1–30 นาที), โหวต 60 วินาที (`VOTE_MS`), final-vote 90 วินาที (`FINAL_VOTE_MS`) final-vote หมดเวลาแล้วไม่มีใครถูกจับ = สายลับชนะ (`time-up`)
-- `NEXT_ROUND` สุ่มสถานที่ใหม่ที่ไม่ซ้ำกับรอบก่อน และเก็บคะแนนไว้
+- `NEXT_ROUND` สุ่มสถานที่ใหม่ที่ไม่ซ้ำกับรอบก่อน (จาก `state.deck` เดิม) และเก็บคะแนนไว้
+- **เลือกและสร้างสถานที่เอง (2026-10-19):** `SpyfallOptions` มี `disabled` (id ในชุดมาตรฐานที่ปิด) และ `custom` (`{ id: 'custom-<เลข>', name, roles }` ชื่อเป็นภาษาเดียวตามที่พิมพ์) ทั้งสองเป็น optional เพื่อให้ห้องเก่ายังใช้ได้
+  - `optionsSchema` สร้างจากชุดมาตรฐานใน factory: ตัดช่องว่างหัวท้าย, ชื่อ/บทบาทยาวไม่เกิน 30 (`MAX_CUSTOM_TEXT`), สร้างเองได้ไม่เกิน 20 แห่ง, แห่งละ 1–7 บทบาทไม่ซ้ำ, ชื่อไม่ซ้ำ (ไม่สนตัวพิมพ์) และต้องเหลือสถานที่อย่างน้อย 2 แห่ง (`MIN_DECK_SIZE`) ไม่งั้นสายลับรู้คำตอบทันที
+  - `setup` สร้าง `state.deck` ด้วย `buildDeck` (`rules/deck.ts` ไม่ import zod) ซึ่งเก็บแค่ id และไม่ส่งใน view id บทบาทของที่สร้างเองคือ `<locationId>/r<ลำดับ>` (`customRoleId`) ถ้าบทบาทน้อยกว่าจำนวนคนจะวนซ้ำ (ชุดมาตรฐานมีพอเสมอ ผล seeded rng จึงเหมือนเดิม) `SPY_GUESS` รับเฉพาะ id ใน `deck`
+  - ตั้งค่าเปลี่ยนได้เฉพาะในล็อบบี้ `room.options` ระหว่างเล่นจึงตรงกับ `deck` เสมอ client ได้ options ผ่าน `GameScreenProps.options` แล้วหาชื่อด้วย `deckFor` (`client/deck.ts`)
+  - หน้าตั้งค่า (`client/settings.tsx`) เก็บสำเนา options ในเครื่อง กดหลายครั้งติดกันจะได้ไม่ส่งค่าเก่าทับ และกันไม่ให้เหลือน้อยกว่า 2 แห่งก่อนส่ง (server ตรวจอีกชั้น) body ทั้งหมดยังต่ำกว่าเพดาน 16 KB
 - `isOver` เป็นจริงเฉพาะเมื่อ reveal แล้วคนไม่พอเล่นต่อ ระหว่าง reveal ปกติยังรับ `NEXT_ROUND`
 - `SpyfallView` มี:
   - `you` เป็นหนึ่งใน `spy`, `agent` (มี `locationId`, `roleId`) หรือ `spectator`
   - `vote.voted` บอกแค่ว่าใครโหวตแล้ว ไม่บอกว่าโหวตอะไร
+  - `lastVote` (2026-10-19) คือผลโหวตที่ตัดสินแล้วล่าสุดของรอบ รวมว่าแต่ละคนโหวตอะไร (`null` = ไม่ได้โหวต) เปิดเผยได้เพราะตัดสินแล้ว ล้างตอนแจกไพ่ใหม่และตอนจบรอบด้วยเหตุอื่นที่ไม่ใช่โหวต
   - `reveal` เป็น `null` จนถึง phase `reveal`
 - รหัส error อยู่ใน `SpyfallError` (`not-host`, `accusation-used`, `wrong-phase` ฯลฯ)
 
@@ -294,13 +300,22 @@ type SpyfallAction =
 ### Web (`apps/web`) และหน้าจอเกม
 
 - Next.js 16 (App Router, Turbopack) + React 19 + Tailwind 4 คอมโพเนนต์แบบ shadcn/ui (cva + tailwind-merge) อยู่ใน `packages/ui` (เขียนเองตามแบบ shadcn ยังไม่ได้ใช้ CLI) ใช้ฟอนต์ Noto Sans Thai (ตัวละตินแบบ mono ใช้ IBM Plex Mono ผ่าน `font-mono`) และมีโหมดมืดตาม `prefers-color-scheme`
-- `packages/ui/src/game-client.ts` เป็นสัญญาระหว่างเว็บกับหน้าจอเกม: `GameClient` มี `Screen` (ได้ `view: unknown` แล้วแปลง type เอง), `Settings`, ชื่อ, จำนวนผู้เล่น, `mode` (`in-app` = เล่นบนจอได้เลย, `together` = ต้องคุยกันเอง อยู่ด้วยกันหรือ Discord/LINE) และ `icon` (pixel art เป็นแถวสตริง `#` วาดด้วย `PixelIcon`) เว็บลงทะเบียนเกมที่ `apps/web/src/games.ts` ที่เดียว
+- `packages/ui/src/game-client.ts` เป็นสัญญาระหว่างเว็บกับหน้าจอเกม: `GameClient` มี `Screen` (ได้ `view: unknown` และ `options: unknown` ของห้อง แล้วแปลง type เอง), `Settings`, ชื่อ, จำนวนผู้เล่น, `mode` (`in-app` = เล่นบนจอได้เลย, `together` = ต้องคุยกันเอง อยู่ด้วยกันหรือ Discord/LINE) และ `icon` (pixel art เป็นแถวสตริง `#` วาดด้วย `PixelIcon`) เว็บลงทะเบียนเกมที่ `apps/web/src/games.ts` ที่เดียว
 - ชื่อเกมที่แสดง `GAME_DISPLAY_NAME` อยู่ใน `packages/games/spyfall/client/messages.ts` ตอนนี้คือ "ใครคือสายลับ" / "Who's the Spy?" ข้อความของเกมอยู่ในไฟล์นั้น ข้อความของแพลตฟอร์มอยู่ที่ `apps/web/src/messages/{th,en}.ts` (เทสต์ตรวจว่า key ตรงกันและครอบคลุมรหัส error ทุกตัว)
-- client import ค่าคงที่จาก `rules/constants.ts` และ type จาก `rules/types.ts` เท่านั้น ไม่ import `rules/game.ts` เพื่อไม่ให้ zod ติดไปใน bundle
+- client import ค่าคงที่จาก `rules/constants.ts`, type จาก `rules/types.ts` และ `rules/deck.ts` เท่านั้น ไม่ import `rules/game.ts` เพื่อไม่ให้ zod ติดไปใน bundle
 - **การเชื่อมต่อ:** `lib/room-client.ts` (ใช้กับ `useSyncExternalStore`) poll ห้องของแท็บนี้ เปลี่ยนหน้าแล้วไม่หลุด ความถี่ตั้งด้วย `NEXT_PUBLIC_POLL_MS` (ค่าเริ่มต้น 1000) `serverOffset = serverNow - เวลากึ่งกลางของ request` ใช้กับ `Countdown`
 - **localStorage:** `batonboard:name` เก็บชื่อเล่น และ `batonboard:room:<CODE>` เก็บ `{ token, playerId }` เปิดห้องเดิมในแท็บที่สองของเบราว์เซอร์เดียวกันจะเป็นผู้เล่นคนเดิม ถ้าจะทดสอบหลายผู้เล่นในเครื่องเดียวต้องใช้ browser context แยก
 - **หน้า:** `/` หน้าหลัก (สไตล์ retro: พื้นเขียวเทาอ่อน หมึกเขียวเข้ม ตัวอักษร mono — สี `--landing-bg`/`--landing-ink` สลับกันในโหมดมืด มีแนะนำแพลตฟอร์ม, วิธีเล่น, ปุ่มเล่น, ช่องใส่รหัสห้อง และตารางเกมแยก 2 หมวดตาม `mode` เติมช่อง "เร็ว ๆ นี้" ให้เต็มแถว 4 ช่อง) → `/games` เลือกเกม + ใส่ชื่อ + สร้างห้อง (`?game=<id>` เลือกเกมไว้ให้) → `/r/<code>` ห้อง ช่องรหัสบนหน้าหลักไม่ถามชื่อ เพราะหน้าห้องถามเอง หน้าหลักกว้างเต็มจอ ส่วน `/games` และ `/r` อยู่ใน route group `(app)` ที่จำกัดกว้าง `max-w-md`
-- **การ์ดบทบาท:** `HoldToReveal` กดค้างเพื่อดู มีปุ่มเปิดค้าง/ซ่อน ปุ่มสำคัญสูงอย่างน้อย 48px และหน้าจอกว้างไม่เกิน `max-w-md`
+- **การ์ดบทบาท (2026-10-19):** `HoldToReveal` เป็นไพ่ 3D ด้วย CSS ล้วน (ไม่มี library) กดค้าง = พลิกดูหน้าไพ่ ปล่อย = พลิกกลับ มีปุ่มเปิดค้าง/ซ่อน ปุ่มสำคัญสูงอย่างน้อย 48px และหน้าจอกว้างไม่เกิน `max-w-md`
+  - หลังไพ่ต้องเหมือนกันทุกคน (ลาย + `emblem` ของเกม + `backLabel` + `hint`) ห้ามใส่อะไรที่ขึ้นกับบทบาท หน้าไพ่ (children) อยู่ใน DOM เฉพาะตอนเปิดและระหว่างพลิกกลับ (`FLIP_MS`)
+  - เอียงตามนิ้ว/เมาส์ และตาม `deviceorientation` เฉพาะเครื่องที่ไม่ต้องขอ permission (Android) iOS ต้องกดอนุญาตจึงข้าม ค่าเอียงเขียนลง CSS variable (`--rx`, `--ry`, `--gx`, `--gy`) ผ่าน `requestAnimationFrame` ไม่ผ่าน React state
+  - แจกไพ่ (Web Animations API) ตอน mount ซึ่งเกิดทุกต้นรอบเพราะหน้า reveal ถอดการ์ดออก
+  - `prefers-reduced-motion`: ไม่เอียง ไม่แจก ไม่มีแสงสะท้อน และพลิกทันที
+  - icon ของ spyfall อยู่ที่ `client/icon.ts` ใช้ทั้งใน `GameClient.icon` และบนไพ่
+- **ไพ่และอนิเมชันที่ใช้ร่วมกัน (`packages/ui`):** `FlipCard` (ไพ่สองหน้า), `CardBack`, `CardFace`, `PixelAvatar` และ `prefersReducedMotion()` ห้ามใส่ `filter` (เช่น `drop-shadow`) ที่ `FlipCard` เพราะทำให้ 3D แบนจนเห็นหลังไพ่ตลอด ให้ใส่ที่ wrapper keyframes `animate-scan`, `animate-rise` และ `animate-stamp` อยู่ใน `apps/web/src/app/globals.css` ทุกที่ที่ใช้ต้องมี `motion-reduce:animate-none`
+- **อวตาร:** `avatarFor(name)` สร้าง pixel art 8x8 + สีจาก hash ของชื่อ (ไม่สนตัวพิมพ์) จึงไม่ต้องเก็บใน server ใช้ในล็อบบี้และหน้าเกม
+- **ธีมแฟ้มลับ (spyfall):** พื้นหลังตาราง + เส้นสแกน (`Backdrop` เป็น fixed เนื้อหาจึงต้องอยู่ใน wrapper ที่เป็น `relative`) แผงข้อมูลเป็น `Dossier` (Card + แถบชื่อแบบแฟ้ม) และ phase เป็นตราประทับ
+- **ผลโหวตและฉากเฉลย (spyfall):** โหวตไม่ผ่าน = แผง `LastVotePanel` พลิกบัตรโหวตทีละใบ (`BALLOT_STEP_MS`) ปิดได้ ส่วน reveal เป็นลำดับ `votes` (ถ้าจบด้วยโหวต) → `suspense` → `spy` (ไพ่พลิกเห็นสายลับ) → `done` (ผลและรายละเอียด) รวมราว 5 วินาที มีปุ่มข้าม reduced motion ข้ามไป `done` ทันที `reveal-winner` จึงโผล่หลังลำดับจบ (e2e รอได้เพราะ expect timeout 15 วินาที)
 - **รัน dev:** `pnpm --filter @batonboard/web dev` (หรือ `web` ใน `.claude/launch.json` พอร์ต 3000) ไม่ต้องตั้งอะไร ห้องอยู่ในหน่วยความจำของ `next dev` ถ้าอยากใช้ Redis จริงให้ตั้ง Upstash env ใน `apps/web/.env.local` (ดู `apps/web/.env.example`)
 
 ### E2E (`e2e/`)
@@ -335,7 +350,7 @@ type SpyfallAction =
 
 ### เฟส 2 — ขัดเกลา
 
-ระบบคะแนนหลายรอบ, ชุดสถานที่ที่ผู้เล่นสร้างเอง, สลับภาษาไทย/อังกฤษ, เสียงและการสั่นบนมือถือ
+ระบบคะแนนหลายรอบ, ~~ชุดสถานที่ที่ผู้เล่นสร้างเอง~~ (ทำแล้ว 2026-10-19), สลับภาษาไทย/อังกฤษ, เสียงและการสั่นบนมือถือ
 
 ### เฟส 3 — แพลตฟอร์ม
 

@@ -17,6 +17,8 @@ export interface GameScreenProps {
   /** view จาก server (playerView ของผู้เล่นคนนี้) — เกมแปลง type เอง */
   view: unknown;
   players: PlayerInfo[];
+  /** ตั้งค่าห้องตอนเริ่มเกม (ข้อมูลสาธารณะ ผ่าน optionsSchema ของเกมแล้ว) — เกมแปลง type เอง */
+  options: unknown;
   me: string;
   hostId: string;
   /** serverNow - เวลาเครื่อง ใช้กับ Countdown */

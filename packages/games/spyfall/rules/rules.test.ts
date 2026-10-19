@@ -198,6 +198,53 @@ describe('โหวต', () => {
   });
 });
 
+describe('ผลโหวตล่าสุด (lastVote)', () => {
+  it('ระหว่างโหวตยังไม่มี แล้วเปิดเผยว่าใครโหวตอะไรหลังตัดสินว่าไม่ผ่าน', () => {
+    let s = start(6, 4);
+    const [a, b, c] = agents(s) as [string, string, string];
+    s = act(s, a, { type: 'ACCUSE', target: b });
+    expect(spyfall.playerView(s, c).lastVote).toBeNull();
+    s = act(s, c, { type: 'BALLOT', agree: false });
+    const ballots = Object.fromEntries(
+      s.players.filter((p) => p !== b).map((p) => [p, p === a ? true : p === c ? false : null]),
+    );
+    const expected = { accuser: a, accused: b, final: false, ballots, passed: false };
+    expect(s.lastVote).toEqual(expected);
+    expect(spyfall.playerView(s, s.spy).lastVote).toEqual(expected);
+  });
+
+  it('โหวตผ่านเก็บผลไว้ให้ reveal', () => {
+    let s = start(4, 5);
+    const a = agents(s)[0] as string;
+    s = act(s, a, { type: 'ACCUSE', target: s.spy });
+    s = voteAll(s, true);
+    expect(s.phase).toBe('reveal');
+    expect(s.lastVote?.passed).toBe(true);
+    expect(Object.values(s.lastVote?.ballots ?? {})).toEqual([true, true, true]);
+  });
+
+  it('หมดเวลาโหวต: คนที่ไม่ได้โหวตเป็น null', () => {
+    let s = start(4, 6);
+    const [a, b] = agents(s) as [string, string];
+    s = act(s, a, { type: 'ACCUSE', target: b });
+    s = fireDeadline(spyfall, s, T0 + VOTE_MS);
+    expect(s.lastVote?.passed).toBe(false);
+    expect(Object.values(s.lastVote?.ballots ?? {}).filter((v) => v === null)).toHaveLength(2);
+  });
+
+  it('จบรอบด้วยเหตุอื่นหรือแจกไพ่ใหม่ = ล้างผลโหวต', () => {
+    let s = start(6, 4);
+    const [a, b, c] = agents(s) as [string, string, string];
+    s = act(s, a, { type: 'ACCUSE', target: b });
+    s = act(s, c, { type: 'BALLOT', agree: false });
+    expect(s.lastVote).not.toBeNull();
+    const guessed = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
+    expect(guessed.lastVote).toBeNull();
+    const next = act(guessed, HOST, { type: 'NEXT_ROUND' }, T0 + 5_000);
+    expect(next.lastVote).toBeNull();
+  });
+});
+
 describe('เวลา', () => {
   it('หยุดตอนโหวตและเดินต่อจาก pausedRemaining', () => {
     let s = start(4, 7);

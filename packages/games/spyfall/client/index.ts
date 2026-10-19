@@ -1,5 +1,6 @@
 import type { GameClient } from '@batonboard/ui';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../rules/constants';
+import { SPYFALL_ICON } from './icon';
 import { GAME_DESCRIPTION, GAME_DISPLAY_NAME } from './messages';
 import { SpyfallScreen } from './screen';
 import { SpyfallSettings } from './settings';
@@ -18,23 +19,7 @@ export const spyfallClient: GameClient = {
   maxPlayers: MAX_PLAYERS,
   // ผู้เล่นถามตอบกันเองนอกระบบ
   mode: 'together',
-  // หมวก แว่นดำ และปกเสื้อโค้ท
-  icon: [
-    '....#####....',
-    '...#######...',
-    '...#######...',
-    '..#########..',
-    '#############',
-    '.............',
-    '.#####.#####.',
-    '.#####.#####.',
-    '..###...###..',
-    '.............',
-    '.....###.....',
-    '.##.......##.',
-    '.###.....###.',
-    '####.....####',
-  ],
+  icon: SPYFALL_ICON,
   Screen: SpyfallScreen,
   Settings: SpyfallSettings,
 };
