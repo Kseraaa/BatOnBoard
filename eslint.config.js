@@ -93,7 +93,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@batonboard/spyfall*'],
+              group: ['@batonboard/spyfall*', '@batonboard/boss*'],
               message: 'engine และ rooms ห้ามรู้จักเกมใดเกมหนึ่ง',
             },
           ],

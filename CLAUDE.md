@@ -47,10 +47,11 @@ batonboard/
 │  ├─ protocol/         # HTTP API + Zod schema ที่ฝั่ง client และ server ใช้ร่วม
 │  ├─ ui/               # component ใช้ร่วม (ปุ่ม, การ์ด, นาฬิกา)
 │  └─ games/
-│     └─ spyfall/
-│        ├─ rules/      # กติกาบริสุทธิ์ + unit test
-│        ├─ client/     # หน้าจอเกม (React)
-│        └─ data/       # ชุดสถานที่และบทบาท (เขียนเอง)
+│     ├─ spyfall/
+│     │  ├─ rules/      # กติกาบริสุทธิ์ + unit test
+│     │  ├─ client/     # หน้าจอเกม (React)
+│     │  └─ data/       # ชุดสถานที่และบทบาท (เขียนเอง)
+│     └─ boss/          # เกมที่ 2 "I'm Big Deal" (กำลังทำ ดู docs/boss-plan.md)
 └─ e2e/                 # Playwright: เทสต์ผู้เล่นหลายคน
 ```
 
@@ -330,6 +331,17 @@ type SpyfallAction =
 - `next-env.d.ts` และ `apps/web/AGENTS.md` เป็นไฟล์ที่ Next สร้างเองและอยู่ใน `.gitignore` คำสั่ง `typecheck` ของเว็บรัน `next typegen` ก่อน `tsc`
 - job `e2e` ใน CI ตั้ง `CI=true` (ใช้ Chromium, retries 1, ไม่ reuse server) ถ้าเทสต์ล้มจะอัปโหลด `e2e/playwright-report` และ `e2e/test-results` (มี trace) เป็น artifact ชื่อ `playwright-report`
 
+### เกมที่ 2: "I'm Big Deal" (`packages/games/boss`, 2026-10-19)
+
+- เกมเจรจาดีลแบบ I'm the Boss! (Sid Sackson) แผนเต็ม ลำดับงาน B0–B6 และเหตุผลอยู่ใน `docs/boss-plan.md` ชื่อ "I'm the Boss" ใช้ในโค้ด/เอกสารเท่านั้น ห้ามใส่ใน UI หรือ data ชื่อที่แสดงคือ "I'm Big Deal" กระดาน ค่าดีล ชื่อตระกูล และชื่อไพ่เขียนเองทั้งหมด
+- ตัดสินใจแล้ว: หน้าจอใช้ React Three Fiber (3D เฉพาะโต๊ะ/กระดาน/ตัวเงิน/ลูกเต๋า ส่วนไพ่บนมือ แผงดีล และเงินเป็น 2D และมีกระดาน 2D สำรอง), `mode: 'together'`, จบเกมตามต้นฉบับ (สุ่มจบหลังดีลที่ 10–14 จบแน่นอนที่ 15, "เกมสั้น" เป็นตัวเลือก = 10 ดีล), poll ทุก 1 วินาทีเหมือนเดิม, เวลาเจรจาต่อดีลเริ่มต้น 5 นาที host ปรับได้ 1–30 นาทีหรือไม่จำกัด (`negotiationMs: null`)
+- `rules/` เป็น factory `createBoss({ boardId, spaces, dealValues, endFaces })` เหมือน spyfall เทสต์ใช้กระดานจำลองใน `rules/fixtures.ts` ตระกูลเป็น id สี (`FAMILIES`) ส่วนชื่อที่แสดงจะอยู่ใน `data/`
+- id ไพ่ไม่ซ้ำทุกใบ (`clan-red-1`, `travel-any-2`, `stop-10` …) เทสต์รั่วจึงค้นด้วย `"<id>"` ที่มีเครื่องหมายคำพูด view ส่งไพ่บนมือเฉพาะของตัวเอง ของคนอื่นส่งแค่จำนวน ไม่ส่งกองจั่ว
+- **แผนดีลผูกมัด:** บอส `PROPOSE` ว่าตระกูลไหนมาจากนักลงทุนหรือไพ่ตระกูลใบไหน และให้ใครเท่าไหร่ (บอสได้ส่วนที่เหลือ) ผู้ร่วมดีลทุกคน `RESPOND` ตกลง → นับถอยหลัง `CLOSE_MS` 5 วินาทีแล้วปิดดีลผ่าน `onDeadline` เสนอใหม่หรือมีคนไม่ตกลงจะล้างการนับ `rules/plan.ts` (ไม่ import zod) ใช้ร่วมกับ client ได้
+- ไพ่ตระกูลที่วางบนโต๊ะอยู่จนจบดีล ใช้แล้วลงกองทิ้ง ที่ไม่ได้ใช้กลับมือ จั่วไม่เกิน 12 ใบบนมือ (จั่วได้น้อยกว่า 3 ถ้าเกิน แทนการให้ทิ้ง)
+- แต้มทอยสุ่มจบเกมสุ่มไว้ตอน `DECLARE` (`deal.endRoll` ไม่อยู่ใน view) เพราะดีลปิดใน `onDeadline` ซึ่งไม่มี `rng` แล้วเปิดเผยผ่าน `lastRoll` (`kind: 'end'`) ตอนปิดดีล
+- B0–B1 เสร็จ (แกนกติกา ยังไม่มีไพ่ไปเที่ยว/ซื้อตัว/ยึดดีล/เบรก) ยังไม่ได้ลงทะเบียนใน registry จนกว่าจะมี `data/` และ client (B3–B4)
+
 ### Deploy
 
 - ขั้นตอนทั้งหมดอยู่ใน `docs/deploy.md`: Vercel โปรเจกต์เดียว Root Directory `apps/web` (`apps/web/vercel.json`) + Upstash Redis จาก Vercel Marketplace (ใส่ `KV_REST_API_URL` และ `KV_REST_API_TOKEN` ให้เอง)
@@ -357,7 +369,7 @@ type SpyfallAction =
 
 ### เฟส 3 — แพลตฟอร์ม
 
-เกมที่สอง (เพื่อพิสูจน์ว่า `GameDefinition` ใช้ได้จริง), บัญชีผู้ใช้, ประวัติการเล่น, PostgreSQL
+เกมที่สอง (เพื่อพิสูจน์ว่า `GameDefinition` ใช้ได้จริง — กำลังทำ "I'm Big Deal" ดู `docs/boss-plan.md`), บัญชีผู้ใช้, ประวัติการเล่น, PostgreSQL
 
 ---
 
