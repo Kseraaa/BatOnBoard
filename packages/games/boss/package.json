@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./rules": "./rules/index.ts"
+    ".": "./index.ts",
+    "./rules": "./rules/index.ts",
+    "./data": "./data/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

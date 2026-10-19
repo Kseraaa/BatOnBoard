@@ -59,6 +59,7 @@ export const BossError = {
   InvalidTarget: 'invalid-target',
   AlreadyBoss: 'already-boss',
   RecruitFromPool: 'recruit-from-pool',
+  InvalidDiscard: 'invalid-discard',
 } as const;
 
 export type BossErrorCode = (typeof BossError)[keyof typeof BossError];

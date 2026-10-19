@@ -42,10 +42,11 @@ export interface BossOptions {
 /**
  * - `turn`: เจ้าของเทิร์นเลือกทอย หรือประกาศดีลที่ช่องปัจจุบัน
  * - `moved`: ทอยแล้ว เลือกประกาศดีลที่ช่องใหม่ หรือจั่วไพ่
+ * - `discard`: จั่วแล้วไพ่เกิน 12 ใบ ต้องทิ้งให้เหลือ 12 ก่อนจบเทิร์น
  * - `deal`: กำลังเจรจา
  * - `ended`: จบเกม
  */
-export type Phase = 'turn' | 'moved' | 'deal' | 'ended';
+export type Phase = 'turn' | 'moved' | 'discard' | 'deal' | 'ended';
 
 /** ใครเป็นคนใส่ตระกูลนั้นในดีล: นักลงทุนถาวร หรือไพ่ตระกูลที่วางบนโต๊ะ */
 export type SlotSource = 'investor' | CardId;
@@ -154,6 +155,7 @@ export type BossAction =
   | { type: 'ROLL' }
   | { type: 'DECLARE' }
   | { type: 'DRAW' }
+  | { type: 'DISCARD'; cards: CardId[] }
   | { type: 'OFFER_CLAN'; card: CardId }
   | { type: 'PROPOSE'; plan: Plan }
   | { type: 'RESPOND'; agree: boolean }

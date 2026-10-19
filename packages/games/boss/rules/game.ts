@@ -46,6 +46,7 @@ const actionSchema: z.ZodType<BossAction> = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ROLL') }),
   z.object({ type: z.literal('DECLARE') }),
   z.object({ type: z.literal('DRAW') }),
+  z.object({ type: z.literal('DISCARD'), cards: z.array(cardSchema).max(HAND_LIMIT * 2) }),
   z.object({ type: z.literal('OFFER_CLAN'), card: cardSchema }),
   z.object({
     type: z.literal('PROPOSE'),
@@ -400,6 +401,14 @@ export function createBoss(
         case 'DRAW':
           if (state.phase !== 'moved') return BossError.WrongPhase;
           return by === state.current ? null : BossError.NotYourTurn;
+        case 'DISCARD': {
+          if (state.phase !== 'discard') return BossError.WrongPhase;
+          if (by !== state.current) return BossError.NotYourTurn;
+          const hand = state.hands[by] ?? [];
+          if (new Set(action.cards).size !== action.cards.length) return BossError.InvalidDiscard;
+          if (action.cards.some((c) => !hand.includes(c))) return BossError.NotInHand;
+          return hand.length - action.cards.length === HAND_LIMIT ? null : BossError.InvalidDiscard;
+        }
         case 'OFFER_CLAN': {
           if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
           if (!(state.hands[by] ?? []).includes(action.card)) return BossError.NotInHand;
@@ -506,14 +515,22 @@ export function createBoss(
             },
           };
         case 'DRAW': {
-          const room = Math.max(0, HAND_LIMIT - (state.hands[by]?.length ?? 0));
+          // จั่วครบเสมอแล้วค่อยทิ้งให้เหลือ 12 — ถ้าจั่วไม่ได้เมื่อมือเต็ม ไพ่จะไม่หมุนเวียนจนเกมค้าง
+          const drawn = { ...state, ...draw(state, by, DRAW_COUNT, rng) };
+          if ((drawn.hands[by]?.length ?? 0) > HAND_LIMIT) return { ...drawn, phase: 'discard' };
+          return { ...drawn, phase: 'turn', current: leftOf(state.players, by) };
+        }
+        case 'DISCARD':
           return {
             ...state,
-            ...draw(state, by, Math.min(DRAW_COUNT, room), rng),
+            hands: {
+              ...state.hands,
+              [by]: (state.hands[by] ?? []).filter((c) => !action.cards.includes(c)),
+            },
+            discard: [...state.discard, ...action.cards],
             phase: 'turn',
             current: leftOf(state.players, by),
           };
-        }
         case 'OFFER_CLAN':
           if (deal === null) return state;
           return {

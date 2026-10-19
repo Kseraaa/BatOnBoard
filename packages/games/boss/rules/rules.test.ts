@@ -138,12 +138,49 @@ describe('เทิร์น', () => {
     expect(allCards(drew).sort()).toEqual(fullDeck().sort());
   });
 
-  it(`ถือไพ่ได้ไม่เกิน ${HAND_LIMIT} ใบ`, () => {
+  it(`จั่วแล้วเกิน ${HAND_LIMIT} ใบ ต้องทิ้งให้เหลือ ${HAND_LIMIT} ก่อนจบเทิร์น`, () => {
     let s = start();
     const p = s.current;
-    s = { ...s, hands: { ...s.hands, [p]: s.deck.slice(0, 11) }, deck: s.deck.slice(11) };
+    const other = s.players.find((q) => q !== p) as string;
+    // มือเริ่ม 5 ใบ + อีก 6 = 11 ใบ
+    s = {
+      ...s,
+      hands: { ...s.hands, [p]: [...(s.hands[p] ?? []), ...s.deck.slice(0, 6)] },
+      deck: s.deck.slice(6),
+    };
+    const drew = act(act(s, p, { type: 'ROLL' }), p, { type: 'DRAW' });
+    expect(drew.hands[p]).toHaveLength(14);
+    expect(drew.phase).toBe('discard');
+    expect(drew.current).toBe(p);
+    expect(allCards(drew).sort()).toEqual(fullDeck().sort());
+
+    const hand = drew.hands[p] ?? [];
+    expect(tryAct(drew, other, { type: 'DISCARD', cards: hand.slice(0, 2) })).toBe(
+      BossError.NotYourTurn,
+    );
+    expect(tryAct(drew, p, { type: 'DISCARD', cards: hand.slice(0, 1) })).toBe(
+      BossError.InvalidDiscard,
+    );
+    expect(tryAct(drew, p, { type: 'DISCARD', cards: [hand[0] ?? '', hand[0] ?? ''] })).toBe(
+      BossError.InvalidDiscard,
+    );
+    expect(tryAct(drew, p, { type: 'ROLL' })).toBe(BossError.WrongPhase);
+
+    const done = act(drew, p, { type: 'DISCARD', cards: hand.slice(0, 2) });
+    expect(done.hands[p]).toHaveLength(HAND_LIMIT);
+    expect(done.discard).toEqual(expect.arrayContaining(hand.slice(0, 2)));
+    expect(done.phase).toBe('turn');
+    expect(done.current).not.toBe(p);
+    expect(allCards(done).sort()).toEqual(fullDeck().sort());
+  });
+
+  it(`จั่วแล้วไม่เกิน ${HAND_LIMIT} ใบ จบเทิร์นทันที`, () => {
+    let s = start();
+    const p = s.current;
+    s = { ...s, hands: { ...s.hands, [p]: s.deck.slice(0, 9) }, deck: s.deck.slice(9) };
     const drew = act(act(s, p, { type: 'ROLL' }), p, { type: 'DRAW' });
     expect(drew.hands[p]).toHaveLength(HAND_LIMIT);
+    expect(drew.phase).toBe('turn');
   });
 
   it('กองจั่วหมดแล้วสับกองทิ้งมาใช้', () => {
