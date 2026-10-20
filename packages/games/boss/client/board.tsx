@@ -1,21 +1,155 @@
 'use client';
 
-import { cn, PixelIcon } from '@batonboard/ui';
-import { useState } from 'react';
+import { Button, cn, PixelIcon, prefersReducedMotion } from '@batonboard/ui';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import type { SpaceData } from '../data/types';
 import type { Ctx } from './ctx';
 import { FamilyDot, FamilyName } from './family';
 import { BOSS_ICON } from './icon';
 import { ringCell } from './logic';
 
+// three.js หนัก ~200 KB โหลดเฉพาะตอนแสดงแบบ 3D
+const Scene = lazy(() => import('./scene/scene'));
+
+const VIEW_KEY = 'batonboard:boss:view';
+
+function webglAvailable(): boolean {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') ?? c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
+
+interface BoardMode {
+  /** null = ยังไม่ mount (server render) */
+  use3d: boolean | null;
+  can3d: boolean;
+  reduced: boolean;
+  toggle(): void;
+}
+
+/** 3D เป็นค่าเริ่มต้นถ้าเครื่องรองรับ WebGL และไม่ได้ขอลดการเคลื่อนไหว ผู้เล่นสลับเองได้ (จำไว้ในเครื่อง) */
+function useBoardMode(): BoardMode {
+  const [state, setState] = useState<{ use3d: boolean | null; can3d: boolean; reduced: boolean }>({
+    use3d: null,
+    can3d: false,
+    reduced: false,
+  });
+  useEffect(() => {
+    const can3d = webglAvailable();
+    const reduced = prefersReducedMotion();
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(VIEW_KEY);
+    } catch {
+      // private mode ฯลฯ — ใช้ค่าเริ่มต้น
+    }
+    const use3d = can3d && (stored === null ? !reduced : stored === '3d');
+    setState({ use3d, can3d, reduced });
+  }, []);
+  return {
+    ...state,
+    toggle() {
+      const use3d = !state.use3d;
+      try {
+        localStorage.setItem(VIEW_KEY, use3d ? '3d' : '2d');
+      } catch {
+        // จำไม่ได้ก็ไม่เป็นไร
+      }
+      setState({ ...state, use3d });
+    },
+  };
+}
+
 export function Board({ ctx }: { ctx: Ctx }) {
-  const { view, board, m } = ctx;
+  const { board, m } = ctx;
   const [selected, setSelected] = useState<number | null>(null);
-  const dealSpace = view.deal?.space ?? null;
+  const mode = useBoardMode();
   const detail = selected === null ? null : board.spaces[selected];
 
   return (
     <section aria-label={board.name[ctx.locale]} className="space-y-2">
+      {mode.use3d === null ? (
+        <div className="aspect-square w-full rounded-2xl bg-muted/60" />
+      ) : mode.use3d ? (
+        <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-muted/40">
+          <Suspense
+            fallback={
+              <p className="grid h-full place-items-center text-sm text-muted-foreground">
+                {m.board.loading3d}
+              </p>
+            }
+          >
+            <Scene ctx={ctx} selected={selected} onSelect={setSelected} reduced={mode.reduced} />
+          </Suspense>
+          <Hud ctx={ctx} />
+        </div>
+      ) : (
+        <Grid ctx={ctx} selected={selected} onSelect={setSelected} />
+      )}
+      {mode.can3d && (
+        <div className="flex justify-end">
+          <Button size="sm" variant="ghost" onClick={mode.toggle}>
+            {mode.use3d ? m.board.view2d : m.board.view3d}
+          </Button>
+        </div>
+      )}
+      {detail && selected !== null && (
+        <SpaceDetail ctx={ctx} space={detail} onClose={() => setSelected(null)} />
+      )}
+    </section>
+  );
+}
+
+/** ข้อมูลรวมบนฉาก 3D (ราคาหุ้น ดีลที่ปิด ลูกเต๋า) — ตัวเลขอ่านง่ายกว่าใน 3D */
+function Hud({ ctx }: { ctx: Ctx }) {
+  const { view, m } = ctx;
+  const roll = view.lastRoll;
+  return (
+    <>
+      <div className="pointer-events-none absolute left-2 top-2 rounded-xl bg-background/85 px-2.5 py-1.5 shadow-sm">
+        {view.price !== null && (
+          <p className="text-[10px] text-muted-foreground">
+            {m.board.price}{' '}
+            <span data-testid="price" className="font-mono text-sm font-black text-foreground">
+              {ctx.money(view.price)}
+            </span>
+          </p>
+        )}
+        <p className="text-[10px] font-semibold">{m.board.deals(view.dealsDone, view.maxDeals)}</p>
+      </div>
+      <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-2 rounded-xl bg-background/85 px-2.5 py-1.5 shadow-sm">
+        {roll && (
+          <span className="flex items-center gap-1" data-testid="last-roll">
+            <Die value={roll.value} className="size-6" />
+            <span className="sr-only">
+              {roll.kind === 'end' ? m.board.endRolled(roll.value) : m.board.rolled(roll.value)}
+            </span>
+          </span>
+        )}
+        <span className="text-[10px] text-muted-foreground">{m.board.deck(view.deckCount)}</span>
+      </div>
+    </>
+  );
+}
+
+function Grid({
+  ctx,
+  selected,
+  onSelect,
+}: {
+  ctx: Ctx;
+  selected: number | null;
+  onSelect(space: number | null): void;
+}) {
+  const { view, board, m } = ctx;
+  const dealSpace = view.deal?.space ?? null;
+  const setSelected = onSelect;
+
+  return (
+    <>
       <div className="grid aspect-square w-full grid-cols-5 grid-rows-5 gap-1 rounded-2xl bg-muted/60 p-1.5">
         {board.spaces.map((space, i) => {
           const { row, col } = ringCell(i);
@@ -69,10 +203,7 @@ export function Board({ ctx }: { ctx: Ctx }) {
         })}
         <Center ctx={ctx} />
       </div>
-      {detail && selected !== null && (
-        <SpaceDetail ctx={ctx} space={detail} onClose={() => setSelected(null)} />
-      )}
-    </section>
+    </>
   );
 }
 

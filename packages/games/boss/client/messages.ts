@@ -43,6 +43,9 @@ const th = {
     optional: (n: number) => `เลือก ${n} จาก`,
     payout: (amount: string) => `ดีลนี้จ่าย ${amount}`,
     close: 'ปิด',
+    view3d: 'ดูโต๊ะแบบ 3D',
+    view2d: 'ดูกระดานแบบ 2D',
+    loading3d: 'กำลังจัดโต๊ะ 3D…',
   },
   turn: {
     yours: 'ตาของคุณ',
@@ -209,6 +212,9 @@ const en: BossMessages = {
     optional: (n) => `Pick ${n} of`,
     payout: (amount) => `Pays ${amount}`,
     close: 'Close',
+    view3d: 'Show 3D table',
+    view2d: 'Show 2D board',
+    loading3d: 'Setting up the 3D table…',
   },
   turn: {
     yours: 'Your turn',
