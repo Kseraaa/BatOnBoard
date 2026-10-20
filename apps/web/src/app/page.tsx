@@ -104,12 +104,12 @@ export default function LandingPage() {
             </ol>
           </div>
           <div className="flex flex-col gap-6 sm:col-span-2 sm:flex-row sm:items-start lg:col-span-1 lg:flex-col lg:items-center">
-            <Link
-              href="/games"
+            <a
+              href="#games"
               className="inline-flex h-14 items-center justify-center border-2 border-landing-ink px-10 text-xl font-semibold tracking-widest shadow-[4px_4px_0_0_var(--landing-ink)] transition-transform hover:-translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none"
             >
               {t.landing.play}
-            </Link>
+            </a>
             <form id="join" className="w-full max-w-xs scroll-mt-4" onSubmit={join}>
               <label htmlFor="join-code" className="font-semibold">
                 {t.home.joinTitle}
@@ -143,8 +143,14 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {sections.map((s) => (
-          <section key={s.mode} className="pb-10" aria-labelledby={`mode-${s.mode}`}>
+        {sections.map((s, i) => (
+          <section
+            key={s.mode}
+            // ปุ่ม "เล่นเลย!" เลื่อนลงมาที่ตารางเกม (เลือกเกมที่นี่ที่เดียว)
+            id={i === 0 ? 'games' : undefined}
+            className="scroll-mt-4 pb-10"
+            aria-labelledby={`mode-${s.mode}`}
+          >
             <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3">
               <h2 id={`mode-${s.mode}`} className="text-lg font-semibold">
                 {s.title}
@@ -192,7 +198,7 @@ function placeholders(count: number): number {
 function GameTile({ game, name, players }: { game: GameClient; name: string; players: string }) {
   return (
     <Link
-      href={`/games?game=${game.id}`}
+      href={`/play/${game.id}`}
       className="group flex aspect-square flex-col items-center border-b border-r border-landing-ink p-4 transition-colors hover:bg-landing-ink hover:text-landing-bg focus-visible:bg-landing-ink focus-visible:text-landing-bg focus-visible:outline-none"
     >
       <div className="grid w-full flex-1 place-items-center">

@@ -27,7 +27,7 @@ export const en: Messages = {
     back: 'Home',
     yourName: 'Your nickname',
     namePlaceholder: 'e.g. Boss',
-    pickGame: 'Pick a game',
+    gameNotFound: 'Game not found',
     players: (min, max) => `${min}–${max} players`,
     createRoom: 'Create room',
     creating: 'Creating room…',

@@ -81,7 +81,7 @@ test('นำเข้าชุดสถานที่จากข้อคว�
   expect(copied).toContain('# ออฟฟิศ\n- หัวหน้า');
 
   // ห้องใหม่ในเบราว์เซอร์เดิม: ชุดล่าสุดจำไว้ใน localStorage
-  await page.goto('/games');
+  await page.goto('/play/spyfall');
   const create = page.getByRole('button', { name: t.home.createRoom, exact: true });
   await expect(create).toBeEnabled();
   await create.click();

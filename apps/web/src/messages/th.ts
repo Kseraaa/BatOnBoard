@@ -28,7 +28,7 @@ export const th = {
     back: 'หน้าหลัก',
     yourName: 'ชื่อเล่นของคุณ',
     namePlaceholder: 'เช่น บอส',
-    pickGame: 'เลือกเกม',
+    gameNotFound: 'ไม่พบเกมนี้',
     players: (min: number, max: number) => `${min}–${max} คน`,
     createRoom: 'สร้างห้อง',
     creating: 'กำลังสร้างห้อง…',
