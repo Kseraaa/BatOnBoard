@@ -119,6 +119,9 @@ export function recruitFamilies(view: BossView): Family[] {
   return FAMILIES.filter((f) => view.investors[f] !== view.me);
 }
 
+/** ลำดับชนิดไพ่ที่ใช้แสดงคำอธิบาย */
+export const CARD_KINDS = ['clan', 'travel', 'takeover', 'recruit', 'stop'] as const;
+
 export type CardUse = 'offer' | 'travel' | 'takeover' | 'recruit' | 'stop';
 
 /** ไพ่ใบนี้ใช้ทำอะไรได้ตอนนี้ (null = ยังใช้ไม่ได้) */

@@ -150,6 +150,24 @@ const th = {
     } satisfies Record<EndReason, string>,
     rank: 'อันดับ',
   },
+  help: {
+    title: 'วิธีเล่น',
+    goal: 'เป้าหมาย: เป็นนักลงทุนที่รวยที่สุดเมื่อจบเกม',
+    steps: [
+      'ตาของคุณ: ทอยลูกเต๋าเดินตัวเงิน $ (ข้ามช่องที่ปิดแล้ว) หรือประกาศดีลที่ช่องที่ตัวเงินอยู่เลยก็ได้',
+      'ทอยแล้วจะประกาศดีลช่องนั้น หรือจั่วไพ่ 3 ใบแล้วจบเทิร์นก็ได้ (ถือได้ 12 ใบ เกินต้องทิ้ง)',
+      'คนประกาศคือบอส ดีลต้องมีตระกูลครบตามช่อง (จุดเต็ม = ต้องมี วงแหวน = เลือกตามจำนวน) จากนักลงทุนของใครก็ได้ หรือไพ่ตระกูลที่วางบนโต๊ะ',
+      'บอสเสนอแผนว่าใครได้เท่าไหร่ ทุกคนในแผนกดตกลง นับถอยหลัง 5 วินาทีแล้วปิดดีล ได้เงิน = ราคาหุ้น × จำนวนหุ้นของช่อง',
+      'ตกลงกันไม่ได้ บอสยอมแพ้ หรือหมดเวลา = ดีลล่ม ไม่มีใครได้เงิน เทิร์นไปคนทางซ้ายของบอส',
+      'ราคาหุ้นสูงขึ้นทุกดีล หลังดีลที่ 10 (เกมสั้น: ดีลที่ 5) ทอยสุ่มว่าจบเกมไหม ยิ่งช้ายิ่งเสี่ยงจบ',
+    ],
+    cards: 'ไพ่อิทธิพล (ลงได้ระหว่างดีล)',
+    tip: 'ต่อรองด้วยปากได้เต็มที่ สัญญาลอย ๆ ผิดได้ แต่เงินจ่ายตามแผนบนจอเท่านั้น',
+  },
+  sound: {
+    mute: 'ปิดเสียงและการสั่น',
+    unmute: 'เปิดเสียงและการสั่น',
+  },
   settings: {
     negotiation: 'เวลาเจรจาต่อดีล',
     noLimit: 'ไม่จำกัด',
@@ -317,6 +335,24 @@ const en: BossMessages = {
       'not-enough-players': 'Not enough players left',
     },
     rank: 'Ranking',
+  },
+  help: {
+    title: 'How to play',
+    goal: 'Goal: be the richest investor when the game ends',
+    steps: [
+      'On your turn: roll to move the $ marker (closed deals are skipped), or call the deal where it stands now.',
+      'After rolling, call that deal or draw 3 cards to end your turn (hand limit 12; discard the extra).',
+      'Whoever calls is the boss. A deal needs every family its space shows (solid dot = required, ring = pick the number shown), from anyone’s investors or clan cards on the table.',
+      'The boss proposes who gets what. When everyone in the plan agrees, it closes after 5 seconds and pays share price × shares.',
+      'No agreement, the boss gives up, or time runs out = no deal. Nobody is paid and the turn passes left of the boss.',
+      'Share prices rise every deal. From deal 10 (short game: deal 5) a die roll after each deal may end the game.',
+    ],
+    cards: 'Influence cards (play them during a deal)',
+    tip: 'Haggle freely and make promises you might break — but money only moves by the plan on screen.',
+  },
+  sound: {
+    mute: 'Turn off sound and vibration',
+    unmute: 'Turn on sound and vibration',
   },
   settings: {
     negotiation: 'Negotiation time per deal',

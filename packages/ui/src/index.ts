@@ -20,6 +20,10 @@ export { CardBack, CardFace, FlipCard } from './playing-card';
 export type { CardBackProps, CardFaceProps, FlipCardProps } from './playing-card';
 export type { PixelIconProps } from './pixel-icon';
 export { formatClock, remainingMs } from './time';
+export { isMuted, play, setMuted, useFeedback } from './feedback';
+export type { Cue } from './feedback';
+export { SoundToggle } from './sound-toggle';
+export type { SoundToggleProps } from './sound-toggle';
 export type {
   GameClient,
   GameMode,

@@ -5,6 +5,7 @@ import type { GameSettingsProps } from '@batonboard/ui';
 import { useEffect, useState } from 'react';
 import { DEFAULT_NEGOTIATION_MS } from '../rules/constants';
 import type { BossOptions, GameLength } from '../rules/types';
+import { HowToPlay } from './how-to-play';
 import { bossMessages } from './messages';
 
 /** ตัวเลือกเวลาเจรจา (นาที, null = ไม่จำกัด) — server ตรวจช่วงอีกชั้น */
@@ -34,6 +35,7 @@ export function BossSettings({ options, locale, editable, onChange }: GameSettin
 
   return (
     <div className="space-y-5">
+      <HowToPlay m={bossMessages[locale]} />
       <Choices
         label={m.negotiation}
         editable={editable}
