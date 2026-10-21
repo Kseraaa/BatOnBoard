@@ -31,6 +31,8 @@ export const STOP_CARDS = 10;
 export const DEFAULT_NEGOTIATION_MS = 5 * 60_000;
 export const MIN_NEGOTIATION_MS = 60_000;
 export const MAX_NEGOTIATION_MS = 30 * 60_000;
+/** ชื่อตระกูลที่ host ตั้งเองยาวได้ไม่เกินนี้ */
+export const MAX_FAMILY_NAME = 20;
 /** ทุกคนตกลงแล้ว นับถอยหลังเท่านี้ก่อนปิดดีล — โอกาสสุดท้ายให้ลงไพ่หรือเปลี่ยนใจ */
 export const CLOSE_MS = 5_000;
 /** ไพ่ไปเที่ยว/ยึดดีล/ซื้อตัว รอเท่านี้ก่อนมีผล ให้คนอื่นลง "เบรก!" ทัน (poll ทุก ~1 วินาที) */

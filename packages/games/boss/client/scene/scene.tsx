@@ -44,10 +44,16 @@ const TOP = TILE_H;
 export default function Scene({ ctx, selected, onSelect, reduced }: SceneProps) {
   const { view } = ctx;
   const labels = useRef<(HTMLDivElement | null)[]>([]);
+  const tileLabels = useRef<(HTMLDivElement | null)[]>([]);
   const meIndex = view.players.indexOf(view.me);
   const anchors = view.players.map((_, i): Vec3 => {
     const [x, , z] = seatPos(i, view.players.length, meIndex);
     return [x, 0.6, z];
+  });
+  // ป้ายเงินของแต่ละช่องอยู่ขอบล่างของช่อง (ไม่บังจุดสีตระกูล)
+  const tileAnchors = ctx.board.spaces.map((_, i): Vec3 => {
+    const [x, , z] = tilePos(i);
+    return [x, TOP + 0.05, z + TILE * 0.32];
   });
 
   return (
@@ -55,7 +61,7 @@ export default function Scene({ ctx, selected, onSelect, reduced }: SceneProps) 
       <Canvas
         frameloop="demand"
         dpr={[1, 2]}
-        camera={{ position: [0, 12.5, 10], fov: 45 }}
+        camera={{ position: [0, 8.6, 6.4], fov: 45 }}
         onPointerMissed={() => onSelect(null)}
         data-testid="board-3d"
       >
@@ -74,8 +80,8 @@ export default function Scene({ ctx, selected, onSelect, reduced }: SceneProps) 
         <Seats ctx={ctx} />
         <OrbitControls
           enablePan={false}
-          minDistance={10}
-          maxDistance={20}
+          minDistance={7}
+          maxDistance={16}
           minPolarAngle={0.2}
           maxPolarAngle={1.1}
           minAzimuthAngle={-0.9}
@@ -83,7 +89,25 @@ export default function Scene({ ctx, selected, onSelect, reduced }: SceneProps) 
         />
         <TouchScroll />
         <LabelTracker anchors={anchors} labels={labels} />
+        <LabelTracker anchors={tileAnchors} labels={tileLabels} />
       </Canvas>
+      {/* เงินรวมของดีลแต่ละช่อง (ราคาหุ้นตอนนี้ × จำนวนหุ้น) */}
+      {ctx.board.spaces.map((space, i) => {
+        const closed = view.closed.includes(i);
+        return (
+          <div
+            key={space.id}
+            ref={(el) => {
+              tileLabels.current[i] = el;
+            }}
+            data-tile={i}
+            className={`pointer-events-none absolute left-0 top-0 whitespace-nowrap rounded px-1 font-mono text-[10px] font-black leading-tight shadow-sm will-change-transform ${closed ? 'bg-neutral-500/80 text-white' : 'bg-white/90 text-neutral-900'}`}
+            style={{ visibility: 'hidden' }}
+          >
+            {closed ? '✓' : view.price !== null ? ctx.money(view.price * space.shares) : ''}
+          </div>
+        );
+      })}
       {/* ป้ายชื่อเป็น DOM ธรรมดา (ภาษาไทยคมชัด) ตำแหน่งตามที่นั่งถูกเขียนใน useFrame */}
       {view.players.map((p, i) => {
         const boss = view.deal?.boss === p;
@@ -389,7 +413,7 @@ const PENDING_COLOR = { travel: '#38bdf8', takeover: '#f59e0b', recruit: '#22c55
 function PendingCard({ view, reduced }: { view: BossView; reduced: boolean }) {
   const mesh = useRef<Mesh>(null);
   const invalidate = useThree((s) => s.invalidate);
-  const pending = view.deal?.pending ?? null;
+  const pending = view.deal?.pending ?? view.pending ?? null;
   useFrame((state) => {
     if (!mesh.current || pending === null || reduced) return;
     mesh.current.rotation.y = state.clock.elapsedTime * 2;

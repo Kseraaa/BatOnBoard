@@ -70,12 +70,16 @@ export function participants(table: Table, plan: Plan): PlayerId[] {
   return [...new Set(owners.filter((o): o is PlayerId => o !== null))];
 }
 
+/**
+ * `budget` = เงินที่บอสจ่ายได้ทั้งหมด: เงินจากดีล + เงินในกระเป๋าบอส
+ * (กติกาต้นฉบับ: บอสรับเงินดีลแล้วจ่ายตามที่ตกลง จะควักเงินตัวเองจ่ายเพิ่มก็ได้)
+ */
 export function checkPlan(
   space: SpaceDef,
   table: Table,
   plan: Plan,
   boss: PlayerId,
-  payout: number,
+  budget: number,
 ): BossErrorCode | null {
   const families = plan.slots.map((s) => s.family);
   if (new Set(families).size !== families.length) return BossError.InvalidPlan;
@@ -97,6 +101,6 @@ export function checkPlan(
   if (paid.some(([p, amount]) => p === boss || !members.includes(p) || amount < 0)) {
     return BossError.InvalidPlan;
   }
-  if (paid.reduce((sum, [, amount]) => sum + amount, 0) > payout) return BossError.SharesTooHigh;
+  if (paid.reduce((sum, [, amount]) => sum + amount, 0) > budget) return BossError.SharesTooHigh;
   return null;
 }

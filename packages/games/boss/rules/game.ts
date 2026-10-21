@@ -26,6 +26,7 @@ import {
   FAMILIES,
   FULL_GAME_DEALS,
   HAND_LIMIT,
+  MAX_FAMILY_NAME,
   MAX_NEGOTIATION_MS,
   MAX_PLAYERS,
   MIN_NEGOTIATION_MS,
@@ -75,6 +76,13 @@ const actionSchema: z.ZodType<BossAction> = z.discriminatedUnion('type', [
 const optionsSchema: z.ZodType<BossOptions> = z.object({
   negotiationMs: z.number().int().min(MIN_NEGOTIATION_MS).max(MAX_NEGOTIATION_MS).nullable(),
   length: z.enum(['full', 'short']),
+  familyNames: z
+    .partialRecord(familySchema, z.string().trim().min(1).max(MAX_FAMILY_NAME))
+    .refine((names) => {
+      const lower = Object.values(names).map((n) => n.toLocaleLowerCase());
+      return new Set(lower).size === lower.length;
+    })
+    .optional(),
 });
 
 function assertValidConfig({ spaces, dealValues, endFaces }: BossConfig): void {
@@ -211,6 +219,9 @@ export function createBoss(
   const spaceAt = (i: number) => spaces[i] as SpaceDef;
   const priceOf = (state: BossState) => dealValues[state.dealsDone] ?? 0;
   const payoutOf = (state: BossState, deal: Deal) => priceOf(state) * spaceAt(deal.space).shares;
+  /** บอสจ่ายส่วนแบ่งได้ถึงเงินดีล + เงินที่มีอยู่ */
+  const budgetOf = (state: BossState, deal: Deal) =>
+    payoutOf(state, deal) + (state.money[deal.boss] ?? 0);
   const tableOf = (state: BossState, deal: Deal) => ({
     investors: state.investors,
     offered: deal.offered,
@@ -287,9 +298,27 @@ export function createBoss(
         tableOf(resolved, next),
         plan,
         next.boss,
-        payoutOf(resolved, next),
+        budgetOf(resolved, next),
       ) !== null;
     return broken ? { ...resolved, deal: { ...next, plan: null } } : resolved;
+  }
+
+  /** ไพ่ซื้อตัวตอนไพ่เกินมือมีผล (หรือโดนเบรก) แล้ว: มือเหลือไม่เกิน 12 เสมอ จึงจบเทิร์น */
+  function endLimitPlay(state: BossState): BossState {
+    const by = state.current;
+    if ((state.hands[by]?.length ?? 0) > HAND_LIMIT) return { ...state, pending: null };
+    return { ...state, pending: null, phase: 'turn', current: leftOf(state.players, by) };
+  }
+
+  function resolveLimitPlay(state: BossState): BossState {
+    const pending = state.pending;
+    if (pending == null || pending.kind !== 'recruit') return state;
+    return endLimitPlay({
+      ...state,
+      investors: { ...state.investors, [pending.family]: pending.by },
+      discard: [...state.discard, ...pending.cards],
+      lastPlay: { ...pending, seq: nextSeq(state), outcome: 'resolved', stoppedBy: null },
+    });
   }
 
   function closeDeal(state: BossState): BossState {
@@ -383,6 +412,7 @@ export function createBoss(
         lastRoll: null,
         lastDeal: null,
         lastPlay: null,
+        pending: null,
         result: null,
       };
     },
@@ -405,6 +435,7 @@ export function createBoss(
         case 'DISCARD': {
           if (state.phase !== 'discard') return BossError.WrongPhase;
           if (by !== state.current) return BossError.NotYourTurn;
+          if (state.pending != null) return BossError.CardPending;
           const hand = state.hands[by] ?? [];
           if (new Set(action.cards).size !== action.cards.length) return BossError.InvalidDiscard;
           if (action.cards.some((c) => !hand.includes(c))) return BossError.NotInHand;
@@ -428,7 +459,7 @@ export function createBoss(
             tableOf(state, deal),
             action.plan,
             deal.boss,
-            payoutOf(state, deal),
+            budgetOf(state, deal),
           );
         case 'RESPOND':
           if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
@@ -468,8 +499,14 @@ export function createBoss(
           if (by === deal.boss) return BossError.AlreadyBoss;
           return holds(state, by, [action.card], 'takeover');
         case 'PLAY_RECRUIT': {
-          if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
-          if (deal.pending !== null) return BossError.CardPending;
+          // ไพ่เกิน 12 ใบ: เจ้าของเทิร์นลงชุดซื้อตัวแทนการทิ้งได้ (กติกาต้นฉบับ)
+          if (state.phase === 'discard') {
+            if (by !== state.current) return BossError.NotYourTurn;
+            if (state.pending != null) return BossError.CardPending;
+          } else {
+            if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
+            if (deal.pending !== null) return BossError.CardPending;
+          }
           const err = holds(state, by, action.cards, 'recruit');
           if (err !== null) return err;
           // มีนักลงทุนเหลือกองกลาง ต้องซื้อจากกองกลางก่อน ไม่งั้นซื้อจากคนอื่น
@@ -480,6 +517,10 @@ export function createBoss(
           return state.investors[action.family] === by ? BossError.InvalidTarget : null;
         }
         case 'PLAY_STOP':
+          if (state.phase === 'discard') {
+            if (state.pending == null) return BossError.NothingToStop;
+            return holds(state, by, [action.card], 'stop');
+          }
           if (state.phase !== 'deal' || deal === null) return BossError.WrongPhase;
           if (deal.pending === null) return BossError.NothingToStop;
           return holds(state, by, [action.card], 'stop');
@@ -565,12 +606,40 @@ export function createBoss(
         case 'PLAY_TAKEOVER':
           return playPending(state, { kind: 'takeover', by, cards: [action.card] }, now);
         case 'PLAY_RECRUIT':
+          if (state.phase === 'discard') {
+            return {
+              ...state,
+              hands: {
+                ...state.hands,
+                [by]: (state.hands[by] ?? []).filter((c) => !action.cards.includes(c)),
+              },
+              pending: {
+                kind: 'recruit',
+                by,
+                cards: action.cards,
+                family: action.family,
+                until: now + PENDING_MS,
+              },
+            };
+          }
           return playPending(
             state,
             { kind: 'recruit', by, cards: action.cards, family: action.family },
             now,
           );
         case 'PLAY_STOP': {
+          const outside = state.pending;
+          if (state.phase === 'discard' && outside != null) {
+            return endLimitPlay({
+              ...state,
+              hands: {
+                ...state.hands,
+                [by]: (state.hands[by] ?? []).filter((c) => c !== action.card),
+              },
+              discard: [...state.discard, ...outside.cards, action.card],
+              lastPlay: { ...outside, seq: nextSeq(state), outcome: 'stopped', stoppedBy: by },
+            });
+          }
           const pending = deal?.pending;
           if (deal == null || pending == null) return state;
           // เบรกยกเลิกไพ่ที่รอผล ทั้งคู่ลงกองทิ้ง (เบรกด้วยกันยกเลิกไม่ได้ จึงไม่ต้องรอ)
@@ -623,11 +692,13 @@ export function createBoss(
         lastRoll: state.lastRoll,
         lastDeal: state.lastDeal,
         lastPlay: state.lastPlay,
+        pending: state.pending ?? null,
         result: state.result,
       };
     },
 
     nextDeadline(state) {
+      if (state.phase === 'discard') return state.pending?.until ?? null;
       const deal = state.deal;
       if (state.phase !== 'deal' || deal === null) return null;
       const times = [deal.pending?.until ?? null, deal.closeAt, deal.deadline].filter(
@@ -637,6 +708,10 @@ export function createBoss(
     },
 
     onDeadline(state, now) {
+      if (state.phase === 'discard') {
+        const pending = state.pending;
+        return pending != null && now >= pending.until ? resolveLimitPlay(state) : state;
+      }
       const deal = state.deal;
       if (state.phase !== 'deal' || deal === null) return state;
       if (deal.pending !== null && now >= deal.pending.until) return resolvePending(state, now);
@@ -662,12 +737,15 @@ export function createBoss(
       const investors = Object.fromEntries(
         FAMILIES.map((f) => [f, state.investors[f] === player ? null : state.investors[f]]),
       ) as Record<Family, PlayerId | null>;
+      // ไพ่ซื้อตัวนอกดีลผูกกับเทิร์นของคนที่ไพ่เกินมือ ใครออกก็ยกเลิก (ไพ่ลงกองทิ้ง)
+      const limit = state.pending ?? null;
       let left: BossState = {
         ...state,
         players,
         investors,
         hands,
-        discard: [...state.discard, ...(state.hands[player] ?? [])],
+        pending: null,
+        discard: [...state.discard, ...(state.hands[player] ?? []), ...(limit?.cards ?? [])],
       };
 
       const deal = state.deal;

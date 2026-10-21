@@ -18,12 +18,13 @@ import { FAMILIES } from '../rules/constants';
 import type { BossAction, BossView, Family } from '../rules/types';
 import { Board } from './board';
 import type { Ctx } from './ctx';
-import { DealPanel } from './deal';
+import { DealPanel, Pending } from './deal';
 import { FamilyDot } from './family';
 import { Hand } from './hand';
 import { HowToPlay } from './how-to-play';
-import { canDeclare, canDraw, canRoll, discardCount, millions, ranking } from './logic';
+import { canDeclare, canDraw, canRoll, discardCount, kilos, ranking } from './logic';
 import { bossMessages } from './messages';
+import { readOptions } from './settings';
 import { useGameSounds } from './use-sounds';
 
 export function BossScreen(props: GameScreenProps) {
@@ -35,7 +36,13 @@ export function BossScreen(props: GameScreenProps) {
   useGameSounds(view);
   if (!board) return null;
 
-  const families = new Map<Family, FamilyInfo>(board.families.map((f) => [f.id, f]));
+  const names = readOptions(props.options).familyNames ?? {};
+  const families = new Map<Family, FamilyInfo>(
+    board.families.map((f) => {
+      const custom = names[f.id];
+      return [f.id, custom ? { ...f, name: { th: custom, en: custom } } : f];
+    }),
+  );
   const ctx: Ctx = {
     view,
     m,
@@ -43,7 +50,7 @@ export function BossScreen(props: GameScreenProps) {
     board,
     nameOf: (id) => props.players.find((p) => p.id === id)?.name ?? '?',
     family: (id) => families.get(id) as FamilyInfo,
-    money: (units) => m.money.million(millions(units, board.moneyUnit)),
+    money: (units) => m.money.k(kilos(units, board.moneyUnit)),
     async send(action: BossAction) {
       setBusy(true);
       setError(null);
@@ -77,7 +84,7 @@ export function BossScreen(props: GameScreenProps) {
           {error}
         </p>
       )}
-      <div className="gap-4 space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:space-y-0">
+      <div className="gap-4 space-y-4 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:space-y-0">
         <Board ctx={ctx} />
         <div className="space-y-4">
           {view.phase === 'ended' ? (
@@ -176,10 +183,11 @@ function TurnPanel({ ctx }: { ctx: Ctx }) {
 
   if (view.phase === 'discard') {
     return (
-      <Card>
+      <Card className="space-y-3">
         <p className="text-center font-semibold">
           {mine ? m.turn.yours : m.turn.discarding(ctx.nameOf(view.current))}
         </p>
+        <Pending ctx={ctx} pending={view.pending} />
       </Card>
     );
   }

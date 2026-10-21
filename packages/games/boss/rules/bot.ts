@@ -38,7 +38,14 @@ export function createBossBot(spaces: readonly SpaceDef[]) {
         return open && space && reachable(view, space) ? { type: 'DECLARE' } : { type: 'DRAW' };
       }
       case 'discard': {
+        const pending = view.pending;
+        if (pending != null) return stopOther(view, pending.by, rng);
         if (!myTurn) return null;
+        const recruits = view.hand.filter((c) => cardKind(c) === 'recruit');
+        const family = recruits.length >= RECRUIT_SET ? recruitTarget(view, rng) : undefined;
+        if (family !== undefined && rng.next() < 0.5) {
+          return { type: 'PLAY_RECRUIT', cards: recruits.slice(0, RECRUIT_SET), family };
+        }
         const extra = view.hand.length - HAND_LIMIT;
         return { type: 'DISCARD', cards: rng.shuffle(view.hand).slice(0, extra) };
       }
@@ -68,12 +75,8 @@ function inDeal(view: BossView, deal: DealView, space: SpaceDef, rng: Rng): Boss
   const me = view.me;
   const table: Table = { investors: view.investors, offered: deal.offered, away: deal.away };
 
-  if (deal.pending !== null) {
-    // ระหว่างรอผลเสนอ/ตอบแผนไม่ได้ — เบรกไพ่ของคนอื่นได้อย่างเดียว
-    const stop = view.hand.find((c) => cardKind(c) === 'stop');
-    if (deal.pending.by === me || stop === undefined || rng.next() >= STOP_CHANCE) return null;
-    return { type: 'PLAY_STOP', card: stop };
-  }
+  // ระหว่างรอผลเสนอ/ตอบแผนไม่ได้ — เบรกไพ่ของคนอื่นได้อย่างเดียว
+  if (deal.pending !== null) return stopOther(view, deal.pending.by, rng);
 
   const offer = missingClan(view, table, space);
   if (offer !== undefined) return { type: 'OFFER_CLAN', card: offer };
@@ -133,6 +136,19 @@ function asBoss(
     : { type: 'ABANDON' };
 }
 
+/** เบรกไพ่ที่คนอื่นลง (บางครั้ง) */
+function stopOther(view: BossView, by: PlayerId, rng: Rng): BossAction | null {
+  const stop = view.hand.find((c) => cardKind(c) === 'stop');
+  if (by === view.me || stop === undefined || rng.next() >= STOP_CHANCE) return null;
+  return { type: 'PLAY_STOP', card: stop };
+}
+
+/** ตระกูลที่ซื้อตัวได้: มีในกองกลางต้องซื้อจากกองกลาง ไม่งั้นของคนอื่น */
+function recruitTarget(view: BossView, rng: Rng): Family | undefined {
+  const pool = FAMILIES.filter((f) => view.investors[f] === null);
+  return pick(pool.length > 0 ? pool : FAMILIES.filter((f) => view.investors[f] !== view.me), rng);
+}
+
 /** ไพ่อิทธิพลที่ลงได้ตอนนี้ สุ่มมา 1 แบบ */
 function influence(
   view: BossView,
@@ -151,11 +167,7 @@ function influence(
 
   const recruits = of('recruit');
   if (recruits.length >= RECRUIT_SET) {
-    const pool = FAMILIES.filter((f) => view.investors[f] === null);
-    const family = pick(
-      pool.length > 0 ? pool : FAMILIES.filter((f) => view.investors[f] !== me),
-      rng,
-    );
+    const family = recruitTarget(view, rng);
     if (family !== undefined) {
       plays.push({ type: 'PLAY_RECRUIT', cards: recruits.slice(0, RECRUIT_SET), family });
     }

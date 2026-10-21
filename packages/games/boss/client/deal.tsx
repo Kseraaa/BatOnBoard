@@ -4,9 +4,18 @@ import { Badge, Button, Card, CardTitle, cn, Countdown } from '@batonboard/ui';
 import { useState } from 'react';
 import { cardKind } from '../rules/cards';
 import { spaceFamilies } from '../rules/plan';
-import type { DealView, Family, Plan, PlayResult, SlotSource, SpaceDef } from '../rules/types';
+import type {
+  DealView,
+  Family,
+  PendingPlay,
+  Plan,
+  PlayResult,
+  SlotSource,
+  SpaceDef,
+} from '../rules/types';
 import type { Ctx } from './ctx';
 import { FamilyDot, FamilyName } from './family';
+import { CardFace } from './hand';
 import { autoPlan, bossKeeps, canRespond, planError, planMembers, sourcesFor } from './logic';
 
 export function DealPanel({ ctx, deal }: { ctx: Ctx; deal: DealView }) {
@@ -40,7 +49,7 @@ export function DealPanel({ ctx, deal }: { ctx: Ctx; deal: DealView }) {
         </div>
       </div>
 
-      <Pending ctx={ctx} deal={deal} />
+      <Pending ctx={ctx} pending={deal.pending} />
       <LastPlay ctx={ctx} />
       {deal.closeAt !== null && (
         <p
@@ -71,9 +80,9 @@ export function DealPanel({ ctx, deal }: { ctx: Ctx; deal: DealView }) {
   );
 }
 
-function Pending({ ctx, deal }: { ctx: Ctx; deal: DealView }) {
+/** ไพ่ที่รอผล (ในดีล หรือซื้อตัวตอนไพ่เกินมือ) พร้อมปุ่มเบรกถ้ามีไพ่เบรก */
+export function Pending({ ctx, pending }: { ctx: Ctx; pending: PendingPlay | null }) {
   const { m, view } = ctx;
-  const pending = deal.pending;
   if (pending === null) return null;
   const by = ctx.nameOf(pending.by);
   const text =
@@ -89,11 +98,24 @@ function Pending({ ctx, deal }: { ctx: Ctx; deal: DealView }) {
       data-testid="pending"
       className="space-y-2 rounded-xl border-2 border-amber-400 bg-amber-400/10 p-3"
     >
-      <p className="font-bold">{text}</p>
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        {m.pending.in}
-        <Countdown deadline={pending.until} serverOffset={ctx.serverOffset} className="text-base" />
-      </p>
+      <div className="flex items-center gap-3">
+        {pending.cards[0] !== undefined && (
+          <span className="shrink-0 animate-stamp motion-reduce:animate-none">
+            <CardFace ctx={ctx} card={pending.cards[0]} />
+          </span>
+        )}
+        <div className="min-w-0 space-y-1">
+          <p className="text-lg font-black leading-tight">{text}</p>
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            {m.pending.in}
+            <Countdown
+              deadline={pending.until}
+              serverOffset={ctx.serverOffset}
+              className="text-base"
+            />
+          </p>
+        </div>
+      </div>
       {stop !== undefined && (
         <>
           <p className="text-xs">{m.pending.stopHelp}</p>
@@ -201,7 +223,11 @@ function PlanView({ ctx, deal }: { ctx: Ctx; deal: DealView }) {
         ))}
         <li className="flex items-center justify-between text-sm text-muted-foreground">
           <span>{ctx.nameOf(deal.boss)}</span>
-          <span className="font-mono">{m.deal.bossKeeps(ctx.money(bossKeeps(deal, plan)))}</span>
+          <span className="font-mono">
+            {bossKeeps(deal, plan) < 0
+              ? m.deal.bossPays(ctx.money(-bossKeeps(deal, plan)))
+              : m.deal.bossKeeps(ctx.money(bossKeeps(deal, plan)))}
+          </span>
         </li>
       </ul>
       {mine && (
@@ -234,7 +260,7 @@ function Response({ ctx, value }: { ctx: Ctx; value: boolean | undefined }) {
   );
 }
 
-/** ปุ่ม +/− ปรับส่วนแบ่งทีละ 5 หน่วย (= 5 แสนบาทบนกระดานมาตรฐาน) */
+/** ปุ่ม +/− ปรับส่วนแบ่งทีละ 5 หน่วย (= 5k บนกระดานมาตรฐาน) */
 const SHARE_STEP = 5;
 
 /** บอสเลือกแหล่งของแต่ละตระกูลและส่วนแบ่ง แล้วเสนอแผน */
@@ -324,8 +350,13 @@ function PlanEditor({ ctx, deal, space }: { ctx: Ctx; deal: DealView; space: Spa
           ))}
         </ul>
       )}
-      <p className={cn('text-sm font-semibold', keeps < 0 && 'text-destructive')}>
-        {m.deal.bossKeeps(ctx.money(keeps))}
+      <p
+        className={cn(
+          'text-sm font-semibold',
+          keeps < 0 && (error === 'shares-too-high' ? 'text-destructive' : 'text-amber-600'),
+        )}
+      >
+        {keeps < 0 ? m.deal.bossPays(ctx.money(-keeps)) : m.deal.bossKeeps(ctx.money(keeps))}
       </p>
       {error !== null && (
         <p className="text-sm text-destructive">

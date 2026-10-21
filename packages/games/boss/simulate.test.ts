@@ -179,6 +179,7 @@ function checkInvariants(game: Game): void {
     ...Object.values(s.hands).flat(),
     ...(s.deal?.offered.map((o) => o.card) ?? []),
     ...(s.deal?.pending?.cards ?? []),
+    ...(s.pending?.cards ?? []),
   ];
   if (s.phase !== 'ended') expect(cards.sort()).toEqual(DECK);
   for (const hand of Object.values(s.hands)) expect(hand.length).toBeLessThanOrEqual(12 + 6);

@@ -2,7 +2,10 @@
 
 import { Button, cn, PixelIcon, prefersReducedMotion } from '@batonboard/ui';
 import { lazy, Suspense, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { SpaceData } from '../data/types';
+import { cardFamily, cardKind } from '../rules/cards';
+import type { Family } from '../rules/types';
 import type { Ctx } from './ctx';
 import { FamilyDot, FamilyName } from './family';
 import { BOSS_ICON } from './icon';
@@ -89,15 +92,16 @@ export function Board({ ctx }: { ctx: Ctx }) {
       ) : (
         <Grid ctx={ctx} selected={selected} onSelect={setSelected} />
       )}
-      {mode.can3d && (
-        <div className="flex justify-end">
-          <Button size="sm" variant="ghost" onClick={mode.toggle}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="pt-1.5 text-xs text-muted-foreground">👆 {m.board.tapHint}</p>
+        {mode.can3d && (
+          <Button size="sm" variant="ghost" className="shrink-0" onClick={mode.toggle}>
             {mode.use3d ? m.board.view2d : m.board.view3d}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       {detail && selected !== null && (
-        <SpaceDetail ctx={ctx} space={detail} onClose={() => setSelected(null)} />
+        <SpaceDetail ctx={ctx} index={selected} space={detail} onClose={() => setSelected(null)} />
       )}
     </section>
   );
@@ -150,7 +154,7 @@ function Grid({
 
   return (
     <>
-      <div className="grid aspect-square w-full grid-cols-5 grid-rows-5 gap-1 rounded-2xl bg-muted/60 p-1.5">
+      <div className="grid w-full grid-cols-5 grid-rows-[repeat(5,minmax(6.5rem,auto))] gap-1 rounded-2xl bg-muted/60 p-1.5 sm:grid-rows-[repeat(5,minmax(8rem,auto))]">
         {board.spaces.map((space, i) => {
           const { row, col } = ringCell(i);
           const closed = view.closed.includes(i);
@@ -173,18 +177,27 @@ function Grid({
                 selected === i && 'border-primary',
               )}
             >
-              <span className="line-clamp-1 text-[9px] font-semibold leading-tight sm:line-clamp-2 sm:text-[11px]">
+              <span className="line-clamp-2 pr-4 text-[10px] font-semibold leading-tight sm:text-xs">
                 {space.name[ctx.locale]}
               </span>
-              <span className="flex flex-wrap items-center gap-0.5">
+              <span className="flex flex-wrap items-center gap-0.5 py-0.5">
                 {space.required.map((f) => (
-                  <FamilyDot key={f} ctx={ctx} id={f} size="xs" />
+                  <FamilyDot key={f} ctx={ctx} id={f} size="sm" className="size-4 sm:size-5" />
                 ))}
-                {space.optional?.from.map((f) => (
-                  <FamilyDot key={f} ctx={ctx} id={f} size="xs" outline />
-                ))}
+                {space.optional && (
+                  <span className="inline-flex flex-wrap items-center gap-0.5 rounded-full border border-dashed border-muted-foreground/50 px-0.5">
+                    <span className="text-[9px] font-bold text-muted-foreground">
+                      {m.board.pick(space.optional.count)}
+                    </span>
+                    {space.optional.from.map((f) => (
+                      <FamilyDot key={f} ctx={ctx} id={f} size="xs" className="sm:size-4" outline />
+                    ))}
+                  </span>
+                )}
               </span>
-              <span className="font-mono text-[9px] font-bold sm:text-[11px]">×{space.shares}</span>
+              <span className="font-mono text-xs font-black leading-none sm:text-sm">
+                {view.price !== null ? ctx.money(view.price * space.shares) : `×${space.shares}`}
+              </span>
               {closed && (
                 <span className="absolute inset-0 grid place-items-center text-[10px] font-bold uppercase -rotate-12 text-muted-foreground">
                   {m.board.closed}
@@ -269,38 +282,122 @@ export function Die({ value, className }: { value: number; className?: string })
   );
 }
 
-function SpaceDetail({ ctx, space, onClose }: { ctx: Ctx; space: SpaceData; onClose(): void }) {
+/** รายละเอียดดีลของช่อง — popup แตะช่องไหนก็ได้ (ไม่ต้องรอให้ตัวเงินเดินไปถึง) */
+function SpaceDetail({
+  ctx,
+  index,
+  space,
+  onClose,
+}: {
+  ctx: Ctx;
+  index: number;
+  space: SpaceData;
+  onClose(): void;
+}) {
+  const { m, view } = ctx;
+  const closed = view.closed.includes(index);
+  const status = closed
+    ? m.board.closed
+    : view.deal?.space === index
+      ? m.board.inDeal
+      : view.marker === index && view.phase !== 'ended'
+        ? m.board.here
+        : null;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={space.name[ctx.locale]}
+        data-testid="space-detail"
+        className="max-h-[85dvh] w-full max-w-sm animate-rise space-y-4 overflow-y-auto rounded-2xl border border-border bg-card p-4 text-sm shadow-xl motion-reduce:animate-none"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-lg font-bold leading-tight">{space.name[ctx.locale]}</p>
+            {status && (
+              <p className="mt-1 inline-block rounded-full bg-amber-400/20 px-2 py-0.5 text-xs font-semibold">
+                {status}
+              </p>
+            )}
+          </div>
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            {m.board.close}
+          </Button>
+        </div>
+
+        <div className="rounded-xl bg-muted/60 p-3 text-center">
+          <p className="text-xs text-muted-foreground">{m.board.total}</p>
+          {view.price !== null ? (
+            <>
+              <p className="font-mono text-3xl font-black" data-testid="space-total">
+                {ctx.money(view.price * space.shares)}
+              </p>
+              <p className="font-mono text-xs">
+                {m.board.formula(space.shares, ctx.money(view.price))}
+              </p>
+              {!closed && (
+                <p className="mt-1 text-[11px] text-muted-foreground">{m.board.priceNow}</p>
+              )}
+            </>
+          ) : (
+            <p className="font-mono text-xl font-black">{m.board.shares(space.shares)}</p>
+          )}
+        </div>
+
+        <FamilyList ctx={ctx} title={m.board.requiredAll} families={space.required} />
+        {space.optional && (
+          <FamilyList
+            ctx={ctx}
+            title={`${m.board.optional(space.optional.count)} ${space.optional.from.length}`}
+            families={space.optional.from}
+          />
+        )}
+      </div>
+    </div>,
+    // ย้ายไปไว้ที่ body: หน้าห้องมี transform ครอบเกมอยู่ ทำให้ fixed อิงกรอบนั้นแทนจอ
+    document.body,
+  );
+}
+
+/** ตระกูลในดีล: ใครถือนักลงทุน และเรามีไพ่ตระกูลนี้กี่ใบ */
+function FamilyList({ ctx, title, families }: { ctx: Ctx; title: string; families: Family[] }) {
   const { m, view } = ctx;
   return (
-    <div className="space-y-2 rounded-xl border border-border bg-card p-3 text-sm">
-      <div className="flex items-start justify-between gap-2">
-        <p className="font-bold">{space.name[ctx.locale]}</p>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-xs text-muted-foreground underline underline-offset-2"
-        >
-          {m.board.close}
-        </button>
-      </div>
-      <p className="flex flex-wrap items-center gap-2">
-        <span className="text-muted-foreground">{m.board.required}</span>
-        {space.required.map((f) => (
-          <FamilyName key={f} ctx={ctx} id={f} />
-        ))}
-      </p>
-      {space.optional && (
-        <p className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground">{m.board.optional(space.optional.count)}</span>
-          {space.optional.from.map((f) => (
-            <FamilyName key={f} ctx={ctx} id={f} />
-          ))}
-        </p>
-      )}
-      <p className="font-mono">
-        {m.board.shares(space.shares)}
-        {view.price !== null && ` · ${m.board.payout(ctx.money(view.price * space.shares))}`}
-      </p>
+    <div className="space-y-1.5">
+      <p className="text-xs font-semibold text-muted-foreground">{title}</p>
+      <ul className="space-y-1.5">
+        {families.map((f) => {
+          const holder = view.investors[f];
+          const mine = view.hand.filter((c) => cardKind(c) === 'clan' && cardFamily(c) === f);
+          return (
+            <li key={f} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
+              <FamilyName ctx={ctx} id={f} />
+              <span className="text-xs text-muted-foreground">
+                {holder === null ? m.board.pool : m.board.holder(ctx.nameOf(holder))}
+                {mine.length > 0 && (
+                  <span className="ml-1.5 font-semibold text-foreground">
+                    · {m.board.youHold(mine.length)}
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

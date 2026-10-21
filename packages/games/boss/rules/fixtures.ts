@@ -94,6 +94,7 @@ export function allCards(state: BossState): string[] {
     ...Object.values(state.hands).flat(),
     ...(state.deal?.offered.map((o) => o.card) ?? []),
     ...(state.deal?.pending?.cards ?? []),
+    ...(state.pending?.cards ?? []),
   ];
 }
 

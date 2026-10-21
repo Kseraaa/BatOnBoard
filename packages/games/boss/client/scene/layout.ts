@@ -10,8 +10,8 @@ export const GAP = 0.12;
 export const STEP = TILE + GAP;
 export const TILE_H = 0.14;
 /** รัศมีวงที่นั่งผู้เล่นรอบกระดาน */
-export const SEAT_RADIUS = 4.2;
-export const TABLE_RADIUS = 5.6;
+export const SEAT_RADIUS = 3.95;
+export const TABLE_RADIUS = 5;
 
 export type Vec3 = [number, number, number];
 

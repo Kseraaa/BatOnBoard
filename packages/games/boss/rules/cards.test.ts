@@ -301,3 +301,72 @@ describe('ลงไพ่อิทธิพลนอกดีลไม่ได�
     expect(tryAct(s, ANN, { type: 'PLAY_STOP', card: 'stop-1' })).toBe(BossError.WrongPhase);
   });
 });
+
+describe('ไพ่เกิน 12 ใบ: ลงชุดซื้อตัวแทนการทิ้ง (กติกาต้นฉบับ)', () => {
+  const recruits = ['recruit-1', 'recruit-2', 'recruit-3'];
+
+  /** ดันถือ 15 ใบ (มีซื้อตัว 3 ใบ) และต้องทิ้ง 3 ใบ */
+  function overLimit(extra: Record<string, string[]> = {}): BossState {
+    let s: BossState = { ...owned(start(4, 9)), current: DAN };
+    const filler = s.deck.filter((c) => !c.startsWith('recruit') && !c.startsWith('stop'));
+    s = give(s, DAN, [...recruits, ...filler.slice(0, 12 - (s.hands[DAN]?.length ?? 0))]);
+    for (const [p, list] of Object.entries(extra)) s = give(s, p, list);
+    expect(s.hands[DAN]).toHaveLength(15);
+    return { ...s, phase: 'discard' };
+  }
+
+  it('ซื้อตัวแล้วรอเบรก ระหว่างนั้นทิ้งไม่ได้ พอมีผลได้นักลงทุนและจบเทิร์น', () => {
+    let s = overLimit({ [BOB]: ['recruit-4', 'recruit-5', 'recruit-6'] });
+    expect(tryAct(s, BOB, { type: 'PLAY_RECRUIT', cards: recruits, family: 'blue' })).toBe(
+      BossError.NotYourTurn,
+    );
+    expect(tryAct(s, DAN, { type: 'PLAY_RECRUIT', cards: recruits, family: 'purple' })).toBe(
+      BossError.InvalidTarget,
+    );
+    s = act(s, DAN, { type: 'PLAY_RECRUIT', cards: recruits, family: 'blue' });
+    expect(s.pending).toMatchObject({ kind: 'recruit', by: DAN, until: T0 + PENDING_MS });
+    expect(boss.playerView(s, ANN).pending).toMatchObject({ kind: 'recruit', family: 'blue' });
+    expect(tryAct(s, DAN, { type: 'DISCARD', cards: [] })).toBe(BossError.CardPending);
+    complete(s);
+
+    s = fire(s);
+    expect(s.investors.blue).toBe(DAN);
+    expect(s.hands[DAN]).toHaveLength(12);
+    expect(s).toMatchObject({ phase: 'turn', current: ANN, pending: null });
+    expect(s.lastPlay).toMatchObject({ kind: 'recruit', outcome: 'resolved' });
+    complete(s);
+  });
+
+  it('คนอื่นเบรกได้ ไม่ได้นักลงทุน ไพ่ลงกองทิ้ง แล้วจบเทิร์น', () => {
+    let s = overLimit({ [CAT]: ['stop-1'] });
+    s = act(s, DAN, { type: 'PLAY_RECRUIT', cards: recruits, family: 'blue' });
+    s = act(s, CAT, { type: 'PLAY_STOP', card: 'stop-1' });
+    expect(s.investors.blue).toBe(BOB);
+    expect(s.discard).toEqual(expect.arrayContaining([...recruits, 'stop-1']));
+    expect(s).toMatchObject({ phase: 'turn', current: ANN, pending: null });
+    expect(s.lastPlay).toMatchObject({ outcome: 'stopped', stoppedBy: CAT });
+    complete(s);
+  });
+
+  it('ไม่มีไพ่รอผล เบรกไม่ได้', () => {
+    const s = overLimit({ [CAT]: ['stop-1'] });
+    expect(tryAct(s, CAT, { type: 'PLAY_STOP', card: 'stop-1' })).toBe(BossError.NothingToStop);
+  });
+});
+
+describe('บอสควักเงินตัวเองจ่ายเพิ่มได้ (กติกาต้นฉบับ)', () => {
+  it('ส่วนแบ่งรวมเกินเงินดีลได้ไม่เกินเงินที่บอสมี', () => {
+    let s = dealing();
+    s = { ...s, money: { ...s.money, [DAN]: 100 } };
+    const payout = boss.playerView(s, DAN).deal?.payout ?? 0;
+    const plan = (extra: number): Plan => ({
+      ...redBlue,
+      shares: { [ANN]: payout, [BOB]: extra },
+    });
+    expect(tryAct(s, DAN, { type: 'PROPOSE', plan: plan(101) })).toBe(BossError.SharesTooHigh);
+    s = act(s, DAN, { type: 'PROPOSE', plan: plan(100) });
+    s = act(s, ANN, { type: 'RESPOND', agree: true });
+    s = fire(act(s, BOB, { type: 'RESPOND', agree: true }));
+    expect(s.money).toMatchObject({ [DAN]: 0, [ANN]: payout, [BOB]: 100 });
+  });
+});

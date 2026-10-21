@@ -37,6 +37,11 @@ export interface BossOptions {
   /** null = ไม่จำกัดเวลาเจรจา */
   negotiationMs: number | null;
   length: GameLength;
+  /**
+   * ชื่อตระกูลที่ host ตั้งเอง (ไม่ใส่ = ใช้ชื่อจากกระดาน) แสดงผลอย่างเดียว กติกาไม่ใช้
+   * optional เพื่อให้ห้องเก่ายังใช้ได้
+   */
+  familyNames?: Partial<Record<Family, string>>;
 }
 
 /**
@@ -148,6 +153,11 @@ export interface BossState {
   lastRoll: Roll | null;
   lastDeal: DealOutcome | null;
   lastPlay: PlayResult | null;
+  /**
+   * ไพ่ซื้อตัวที่ลงตอนไพ่เกิน 12 ใบ (phase `discard`) รอเบรกเหมือนในดีล
+   * (ในดีลใช้ `deal.pending`) optional เพื่อให้ห้องที่เล่นค้างอยู่ก่อนอัปเดตยังใช้ได้
+   */
+  pending?: PendingPlay | null;
   result: BossResult | null;
 }
 
@@ -202,5 +212,7 @@ export interface BossView {
   lastRoll: Roll | null;
   lastDeal: DealOutcome | null;
   lastPlay: PlayResult | null;
+  /** ไพ่ซื้อตัวที่รอผลนอกดีล (ตอนไพ่เกิน 12 ใบ) */
+  pending: PendingPlay | null;
   result: BossResult | null;
 }

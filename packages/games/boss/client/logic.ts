@@ -12,6 +12,7 @@ import type {
   CardId,
   DealView,
   Family,
+  PendingPlay,
   Plan,
   SlotSource,
   SpaceDef,
@@ -59,7 +60,24 @@ export function planMembers(view: BossView, slots: Plan['slots']): PlayerId[] {
 export function planError(view: BossView, space: SpaceDef, plan: Plan): string | null {
   const deal = view.deal;
   if (deal === null) return null;
-  return checkPlan(space, tableOf(deal, view), plan, deal.boss, deal.payout);
+  return checkPlan(space, tableOf(deal, view), plan, deal.boss, budget(view, deal));
+}
+
+/** บอสจ่ายส่วนแบ่งได้ถึงเงินดีล + เงินในกระเป๋าบอส */
+export function budget(view: BossView, deal: DealView): number {
+  return deal.payout + (view.money[deal.boss] ?? 0);
+}
+
+/** ไพ่ที่รอผลตอนนี้ (ในดีล หรือซื้อตัวตอนไพ่เกินมือ) */
+export function pendingPlay(view: BossView): PendingPlay | null {
+  return view.deal?.pending ?? view.pending ?? null;
+}
+
+/** ไพ่เกิน 12 ใบ: ลงชุดซื้อตัวแทนการทิ้งได้ไหม */
+export function canRecruitInstead(view: BossView): boolean {
+  return (
+    discardCount(view) > 0 && pendingPlay(view) === null && recruitCards(view).length >= RECRUIT_SET
+  );
 }
 
 export function bossKeeps(deal: DealView, plan: Plan): number {
@@ -143,10 +161,10 @@ export function ranking(view: BossView): PlayerId[] {
   return [...view.players].sort((a, b) => (view.money[b] ?? 0) - (view.money[a] ?? 0));
 }
 
-/** เงินในกติกา (หน่วย) → ล้านบาท ทศนิยมไม่เกิน 1 ตำแหน่ง */
-export function millions(units: number, moneyUnit: number): string {
-  const m = (units * moneyUnit) / 1_000_000;
-  return Number.isInteger(m) ? String(m) : m.toFixed(1);
+/** เงินในกติกา (หน่วย) → พันบาท (k) มีจุลภาคคั่นหลักพัน ทศนิยมไม่เกิน 1 ตำแหน่ง */
+export function kilos(units: number, moneyUnit: number): string {
+  const k = (units * moneyUnit) / 1_000;
+  return k.toLocaleString('en-US', { maximumFractionDigits: 1 });
 }
 
 /**

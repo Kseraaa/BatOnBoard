@@ -10,7 +10,7 @@ import {
   canRoll,
   cardUse,
   discardCount,
-  millions,
+  kilos,
   planError,
   planMembers,
   recruitFamilies,
@@ -125,10 +125,11 @@ describe('ไพ่บนมือใช้ทำอะไรได้', () => {
 });
 
 describe('ข้อความ', () => {
-  it('เงินเป็นล้านบาท', () => {
-    expect(millions(10, 100_000)).toBe('1');
-    expect(millions(12, 100_000)).toBe('1.2');
-    expect(millions(0, 100_000)).toBe('0');
+  it('เงินเป็นพันบาท (k)', () => {
+    expect(kilos(10, 1_000)).toBe('10');
+    expect(kilos(1_250, 1_000)).toBe('1,250');
+    expect(kilos(3, 100)).toBe('0.3');
+    expect(kilos(0, 1_000)).toBe('0');
   });
 
   it('ภาษาไทยและอังกฤษมี key ตรงกัน', () => {

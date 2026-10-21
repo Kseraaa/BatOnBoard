@@ -10,8 +10,9 @@ export interface Ctx {
   locale: Locale;
   board: BoardData;
   nameOf(id: string): string;
+  /** ข้อมูลตระกูล ชื่อตามที่ host ตั้งไว้ในห้อง (ถ้ามี) */
   family(id: Family): FamilyInfo;
-  /** เงินในกติกา (หน่วย) → ข้อความ เช่น "1.2 ล้าน" */
+  /** เงินในกติกา (หน่วย) → ข้อความ เช่น "1,250k" */
   money(units: number): string;
   send(action: BossAction): Promise<boolean>;
   busy: boolean;

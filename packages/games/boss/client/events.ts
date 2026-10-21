@@ -4,6 +4,7 @@
  */
 import type { Cue } from '@batonboard/ui';
 import type { BossView } from '../rules/types';
+import { pendingPlay } from './logic';
 
 export type GameEvent =
   | 'won'
@@ -60,7 +61,7 @@ export function eventsBetween(prev: BossView | null, next: BossView): GameEvent[
     }
   }
 
-  if (prev.deal?.pending == null && next.deal?.pending != null) events.add('pending');
+  if (pendingPlay(prev) === null && pendingPlay(next) !== null) events.add('pending');
   const play = next.lastPlay;
   if (play !== null && play.seq !== prev.lastPlay?.seq && play.outcome === 'stopped') {
     events.add('stopped');

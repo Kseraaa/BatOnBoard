@@ -5,9 +5,19 @@ import { useState } from 'react';
 import { cardFamily, cardKind } from '../rules/cards';
 import { RECRUIT_SET } from '../rules/constants';
 import type { CardId } from '../rules/types';
+import { CARD_ART, CARD_STYLE } from './card-art';
+import { SYMBOLS } from './ctx';
 import type { Ctx } from './ctx';
 import { FamilyDot } from './family';
-import { cardUse, recruitCards, recruitFamilies, sortHand, travelTargets } from './logic';
+import {
+  canRecruitInstead,
+  cardUse,
+  pendingPlay,
+  recruitCards,
+  recruitFamilies,
+  sortHand,
+  travelTargets,
+} from './logic';
 
 /** ไพ่บนมือ: แตะเลือกแล้วลงไพ่ หรือในช่วงทิ้งไพ่ แตะเพื่อเลือกใบที่จะทิ้ง */
 export function Hand({
@@ -46,7 +56,7 @@ export function Hand({
       {hand.length === 0 ? (
         <p className="text-sm text-muted-foreground">{m.cards.empty}</p>
       ) : (
-        <ul className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-2" data-testid="hand">
+        <ul className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-2 pt-3" data-testid="hand">
           {hand.map((card) => (
             <li key={card} className="snap-start">
               <CardTile
@@ -59,7 +69,13 @@ export function Hand({
           ))}
         </ul>
       )}
-      {discard > 0 && (
+      {canRecruitInstead(view) && (
+        <div className="space-y-1.5 rounded-xl border border-dashed border-border p-3">
+          <p className="text-sm font-semibold">{m.turn.recruitInstead}</p>
+          <RecruitPicker ctx={ctx} onDone={() => setSelected([])} />
+        </div>
+      )}
+      {discard > 0 && pendingPlay(view) === null && (
         <Button
           block
           disabled={ctx.busy || selected.length !== discard}
@@ -90,7 +106,6 @@ export function CardTile({
   const { m } = ctx;
   const kind = cardKind(card);
   const family = cardFamily(card);
-  const color = family ? ctx.family(family).color : undefined;
   return (
     <button
       type="button"
@@ -104,29 +119,85 @@ export function CardTile({
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        'flex h-24 w-16 flex-col items-center justify-between rounded-lg border-2 bg-card p-1.5 text-center shadow-sm transition-transform',
-        selected ? '-translate-y-2 border-primary' : 'border-border',
-        kind === 'stop' && 'bg-destructive/10',
-        kind === 'takeover' && 'bg-amber-400/15',
+        'block rounded-xl transition-transform',
+        selected && '-translate-y-2 ring-4 ring-primary ring-offset-2 ring-offset-background',
       )}
-      style={kind === 'clan' && color ? { borderColor: selected ? undefined : color } : undefined}
     >
-      <span className="text-[10px] font-bold leading-tight">
-        {kind ? m.cards.kind[kind] : card}
+      <CardFace ctx={ctx} card={card} />
+    </button>
+  );
+}
+
+/**
+ * หน้าไพ่: ชนิดไพ่บนแถบบน สัญลักษณ์ใหญ่กลางใบ ผลของไพ่สั้น ๆ ด้านล่าง
+ * ไพ่อิทธิพลแต่ละชนิดมีสีของตัวเอง (หรือภาพจาก `CARD_ART`) ไพ่ตระกูลใช้สีของตระกูล
+ */
+export function CardFace({
+  ctx,
+  card,
+  size = 'md',
+}: {
+  ctx: Ctx;
+  card: CardId;
+  size?: 'md' | 'lg';
+}) {
+  const { m } = ctx;
+  const kind = cardKind(card);
+  const family = cardFamily(card);
+  if (kind === null) return null;
+  const style = CARD_STYLE[kind];
+  const info = family ? ctx.family(family) : null;
+  const art = CARD_ART[kind];
+  const from = kind === 'clan' && info ? info.color : style.from;
+  const to = kind === 'clan' && info ? info.color : style.to;
+  const background = [
+    // ไล่สีทับภาพ ตัวหนังสือบนไพ่จึงอ่านออกเสมอ
+    `linear-gradient(180deg, rgb(0 0 0 / 0.35), transparent 35%, transparent 60%, rgb(0 0 0 / 0.55))`,
+    art ? `url("${art}") center / cover` : `linear-gradient(160deg, ${from}, ${to})`,
+  ].join(', ');
+
+  return (
+    <span
+      className={cn(
+        'relative flex flex-col items-center justify-between overflow-hidden rounded-xl border-2 border-white/70 p-1.5 text-center text-white shadow-md',
+        size === 'md' ? 'h-32 w-24' : 'h-40 w-28',
+        kind === 'clan' && 'border-dashed',
+      )}
+      style={{ background }}
+    >
+      <span className="w-full truncate rounded bg-black/25 px-1 text-[11px] font-black leading-snug tracking-wide">
+        {m.cards.kind[kind]}
       </span>
-      {family ? (
-        <FamilyDot ctx={ctx} id={family} size="md" />
-      ) : kind === 'travel' ? (
-        <span className="text-[10px] text-muted-foreground">{m.cards.anyFamily}</span>
+      {kind === 'clan' && info ? (
+        <span aria-hidden className="text-4xl drop-shadow">
+          {SYMBOLS[info.symbol] ?? style.icon}
+        </span>
+      ) : art ? (
+        // ภาพมีสัญลักษณ์อยู่แล้ว เหลือแค่จุดสีของไพ่ไปเที่ยวประจำตระกูล
+        <span className="flex flex-1 items-end justify-end self-stretch">
+          {family && <FamilyDot ctx={ctx} id={family} size="md" className="ring-2 ring-white" />}
+        </span>
       ) : (
-        <span aria-hidden className="text-xl">
-          {kind === 'stop' ? '✋' : kind === 'takeover' ? '👑' : kind === 'recruit' ? '🤝' : ''}
+        <span aria-hidden className="relative text-4xl drop-shadow">
+          {style.icon}
+          {family && (
+            <FamilyDot
+              ctx={ctx}
+              id={family}
+              size="sm"
+              className="absolute -bottom-1 -right-3 ring-2 ring-white"
+            />
+          )}
         </span>
       )}
-      <span className="line-clamp-1 text-[9px] text-muted-foreground">
-        {family ? ctx.family(family).name[ctx.locale] : ''}
+      <span className="line-clamp-2 text-[10px] font-semibold leading-tight drop-shadow">
+        {kind === 'clan' && info
+          ? info.name[ctx.locale]
+          : kind === 'travel'
+            ? `${m.cards.short.travel} · ${info ? info.name[ctx.locale] : m.cards.anyFamily}`
+            : m.cards.short[kind]}
       </span>
-    </button>
+    </span>
   );
 }
 
@@ -146,8 +217,13 @@ function CardActions({ ctx, card, onDone }: { ctx: Ctx; card: CardId; onDone(): 
       className="space-y-2 rounded-xl border border-border bg-card p-3 text-sm"
       data-testid="card-actions"
     >
-      <p className="font-bold">{m.cards.kind[kind]}</p>
-      <p className="text-muted-foreground">{m.cards.help[kind]}</p>
+      <div className="flex items-start gap-3">
+        <CardFace ctx={ctx} card={card} />
+        <div className="min-w-0 space-y-1">
+          <p className="font-bold">{m.cards.kind[kind]}</p>
+          <p className="text-muted-foreground">{m.cards.help[kind]}</p>
+        </div>
+      </div>
       {use === null && (
         <p className="text-xs text-muted-foreground">
           {kind === 'stop'
@@ -207,33 +283,40 @@ function CardActions({ ctx, card, onDone }: { ctx: Ctx; card: CardId; onDone(): 
           })}
         </div>
       )}
-      {use === 'recruit' && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold">{m.cards.recruitPick}</p>
-          {recruitFamilies(view).map((family) => {
-            const holder = view.investors[family];
-            return (
-              <Button
-                key={family}
-                block
-                variant="outline"
-                disabled={ctx.busy}
-                onClick={() =>
-                  void send({
-                    type: 'PLAY_RECRUIT',
-                    cards: recruitCards(view).slice(0, RECRUIT_SET),
-                    family,
-                  })
-                }
-              >
-                <FamilyDot ctx={ctx} id={family} />
-                {ctx.family(family).name[ctx.locale]} ·{' '}
-                {holder === null ? m.cards.pool : ctx.nameOf(holder)}
-              </Button>
-            );
-          })}
-        </div>
-      )}
+      {use === 'recruit' && <RecruitPicker ctx={ctx} onDone={onDone} />}
+    </div>
+  );
+}
+
+/** เลือกตระกูลที่จะซื้อตัว (ลงไพ่ซื้อตัว 3 ใบแรกบนมือ) */
+function RecruitPicker({ ctx, onDone }: { ctx: Ctx; onDone(): void }) {
+  const { m, view } = ctx;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-semibold">{m.cards.recruitPick}</p>
+      {recruitFamilies(view).map((family) => {
+        const holder = view.investors[family];
+        return (
+          <Button
+            key={family}
+            block
+            variant="outline"
+            disabled={ctx.busy}
+            onClick={async () => {
+              const ok = await ctx.send({
+                type: 'PLAY_RECRUIT',
+                cards: recruitCards(view).slice(0, RECRUIT_SET),
+                family,
+              });
+              if (ok) onDone();
+            }}
+          >
+            <FamilyDot ctx={ctx} id={family} />
+            {ctx.family(family).name[ctx.locale]} ·{' '}
+            {holder === null ? m.cards.pool : ctx.nameOf(holder)}
+          </Button>
+        );
+      })}
     </div>
   );
 }
