@@ -2,7 +2,7 @@ export { createSpyfall } from './game';
 export {
   CUSTOM_ID_PATTERN,
   DEFAULT_DURATION_MS,
-  FINAL_VOTE_MS,
+  GUESS_MS,
   MAX_CUSTOM_LOCATIONS,
   MAX_CUSTOM_ROLES,
   MAX_CUSTOM_TEXT,
@@ -27,8 +27,7 @@ export type {
   SpyfallResult,
   SpyfallState,
   SpyfallView,
-  Vote,
-  VoteResult,
+  VoteRound,
   WinReason,
   YouView,
 } from './types';

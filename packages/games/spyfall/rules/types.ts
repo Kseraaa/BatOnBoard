@@ -1,6 +1,10 @@
 import type { PlayerId } from '@batonboard/engine';
 
-export type Phase = 'questioning' | 'voting' | 'final-vote' | 'reveal';
+/**
+ * questioning → (หมดเวลาหรือ host กดเริ่ม) voting → (ทุกคนโหวตหรือหมดเวลา, เสมอ = โหวตใหม่หนึ่งครั้ง)
+ * guessing (สายลับทายสถานที่) → reveal
+ */
+export type Phase = 'questioning' | 'voting' | 'guessing' | 'reveal';
 
 /** สถานที่ในมุมของกติกา: แค่ id กับ id บทบาท ส่วนชื่อที่แสดงอยู่ใน data */
 export interface LocationDef {
@@ -32,39 +36,26 @@ export interface SpyfallOptions {
 }
 
 export type WinReason =
-  | 'spy-caught' // โหวตจับสายลับได้
-  | 'innocent-convicted' // โหวตจับผิดคน
-  | 'spy-guessed' // สายลับเดาสถานที่ถูก
-  | 'spy-guessed-wrong' // สายลับเดาสถานที่ผิด
-  | 'spy-survived' // final-vote ครบทุกคนแล้วไม่มีใครถูกจับ
-  | 'time-up' // final-vote หมดเวลา
+  | 'caught-spy-guessed' // โหวตจับสายลับได้ แต่สายลับทายสถานที่ถูก → สายลับชนะ
+  | 'caught' // โหวตจับสายลับได้ สายลับทายผิด → คนที่โหวตถูกชนะ
+  | 'missed-spy-guessed' // โหวตผิด สายลับทายถูก → สายลับชนะ
+  | 'missed' // โหวตผิด สายลับทายผิด → ไม่มีใครชนะ
   | 'spy-left' // สายลับออกจากห้องกลางเกม
   | 'not-enough-players'; // ผู้เล่นเหลือน้อยกว่าขั้นต่ำ
 
 export interface SpyfallResult {
-  winner: 'spy' | 'agents' | null;
+  /** spy = สายลับชนะ, voters = คนที่โหวตถูกชนะ (ทุกคนถ้าสายลับออกจากห้อง), null = ไม่มีใครชนะ */
+  winner: 'spy' | 'voters' | null;
+  /** คนที่ได้แต้มรอบนี้ */
+  winners: PlayerId[];
   reason: WinReason;
 }
 
-export interface Vote {
-  accuser: PlayerId;
-  accused: PlayerId;
-  /** ผู้กล่าวหาถูกใส่ true อัตโนมัติ */
-  ballots: Record<PlayerId, boolean>;
-  /** หมดเวลาโหวต: คนที่ยังไม่โหวต = ไม่เห็นด้วย */
-  deadline: number;
-  /** โหวตนี้เกิดใน final-vote — ถ้าไม่ผ่านให้กลับ final-vote */
-  final: boolean;
-}
-
-/** ผลโหวตครั้งล่าสุดของรอบ — เปิดเผยได้หลังตัดสินแล้วเท่านั้น */
-export interface VoteResult {
-  accuser: PlayerId;
-  accused: PlayerId;
-  final: boolean;
-  /** ทุกคนยกเว้นผู้ถูกกล่าวหา: true/false = โหวต, null = ไม่ได้โหวต (หมดเวลาหรือตัดสินก่อน) */
-  ballots: Record<PlayerId, boolean | null>;
-  passed: boolean;
+/** โหวตหนึ่งรอบที่ปิดแล้ว — รอบที่ 2 คือโหวตใหม่เฉพาะคนที่คะแนนเสมอ */
+export interface VoteRound {
+  candidates: PlayerId[];
+  /** ผู้โหวต → คนที่เลือก, null = ไม่ได้โหวต (หมดเวลา) */
+  ballots: Record<PlayerId, PlayerId | null>;
 }
 
 export interface SpyfallState {
@@ -79,28 +70,24 @@ export interface SpyfallState {
   firstAsker: PlayerId;
   /** เวลาช่วงถามตอบจากตั้งค่าห้อง เก็บไว้ใช้รอบถัดไป */
   durationMs: number;
-  /** เวลาหมดของ phase questioning / final-vote (ms epoch) — null ระหว่างโหวตและ reveal */
+  /** เวลาหมดของ phase ปัจจุบัน (ถามตอบ / โหวต / สายลับทาย) — null ตอน reveal */
   deadline: number | null;
-  /** เวลาที่เหลือตอนหยุดเพื่อโหวต */
-  pausedRemaining: number | null;
-  /** คนที่ใช้สิทธิ์กล่าวหาแล้วในช่วง questioning */
-  usedAccusation: PlayerId[];
-  /** คนที่เสนอชื่อหรือ PASS แล้วใน final-vote */
-  finalTurns: PlayerId[];
-  vote: Vote | null;
-  /** ผลโหวตครั้งล่าสุดของรอบ (ล้างตอนแจกไพ่ใหม่ และตอนจบรอบด้วยเหตุอื่นที่ไม่ใช่โหวต) */
-  lastVote: VoteResult | null;
-  /** สถานที่ที่สายลับเดา (ถ้ามี) */
+  /** รอบโหวตที่กำลังเปิด — บัตรเป็นความลับจนปิดรอบ */
+  voting: { candidates: PlayerId[]; ballots: Record<PlayerId, PlayerId> } | null;
+  /** รอบโหวตที่ปิดแล้วของรอบเกมนี้ (เปิดเผยได้) */
+  voteRounds: VoteRound[];
+  /** คนที่เสียงส่วนใหญ่เลือก — null = เสมอทั้งสองรอบหรือไม่มีใครโหวต */
+  accused: PlayerId | null;
+  /** สถานที่ที่สายลับทาย (null = ยังไม่ทายหรือไม่ทันเวลา) */
   spyGuess: string | null;
   result: SpyfallResult | null;
-  /** จำนวนรอบที่ชนะ (+1 ทุกคนในฝ่ายที่ชนะ) */
+  /** จำนวนรอบที่ชนะ (+1 ให้ทุกคนใน result.winners) */
   scores: Record<PlayerId, number>;
 }
 
 export type SpyfallAction =
-  | { type: 'ACCUSE'; target: PlayerId }
-  | { type: 'BALLOT'; agree: boolean }
-  | { type: 'PASS' }
+  | { type: 'START_VOTE' }
+  | { type: 'VOTE'; target: PlayerId }
   | { type: 'SPY_GUESS'; locationId: string }
   | { type: 'NEXT_ROUND' };
 
@@ -115,13 +102,17 @@ export interface SpyfallView {
   players: PlayerId[];
   firstAsker: PlayerId;
   deadline: number | null;
-  pausedRemaining: number | null;
-  usedAccusation: PlayerId[];
-  finalTurns: PlayerId[];
-  /** สถานะโหวต: เห็นว่าใครโหวตแล้ว แต่ไม่เห็นว่าโหวตอะไร */
-  vote: { accuser: PlayerId; accused: PlayerId; voted: PlayerId[]; deadline: number } | null;
-  /** ผลโหวตที่ตัดสินแล้ว (รวมว่าใครโหวตอะไร) */
-  lastVote: VoteResult | null;
+  /** รอบโหวตที่เปิดอยู่: เห็นว่าใครโหวตแล้ว แต่ไม่เห็นว่าโหวตใคร (ยกเว้นของตัวเอง) */
+  vote: {
+    round: number;
+    candidates: PlayerId[];
+    voted: PlayerId[];
+    myVote: PlayerId | null;
+  } | null;
+  /** รอบโหวตที่ปิดแล้ว รวมว่าใครโหวตใคร */
+  voteRounds: VoteRound[];
+  /** คนที่เสียงส่วนใหญ่เลือก (ตั้งแต่ปิดโหวต) — ไม่บอกว่าเป็นสายลับหรือไม่จนถึง reveal */
+  accused: PlayerId | null;
   result: SpyfallResult | null;
   /** มีเฉพาะ phase reveal */
   reveal: {

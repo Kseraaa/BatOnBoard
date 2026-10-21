@@ -61,3 +61,28 @@ export function timeUp(state: SpyfallState): SpyfallState {
   if (deadline == null) throw new Error('no deadline');
   return fireDeadline(spyfall, state, deadline);
 }
+
+/** host กดเริ่มโหวต */
+export function startVote(state: SpyfallState, now = T0): SpyfallState {
+  return act(state, HOST, { type: 'START_VOTE' }, now);
+}
+
+/** ทุกคนที่ยังไม่โหวตโหวตตาม pick (หยุดเมื่อรอบปิด) */
+export function voteAll(
+  state: SpyfallState,
+  pick: (voter: PlayerId) => PlayerId,
+  now = T0,
+): SpyfallState {
+  let s = state;
+  for (const p of state.players) {
+    if (s.phase !== 'voting' || s.voting === null || p in s.voting.ballots) continue;
+    s = act(s, p, { type: 'VOTE', target: pick(p) }, now);
+  }
+  return s;
+}
+
+/** เริ่มโหวตแล้วทุกคนเลือก target (target เองเลือกคนอื่น) → เข้าช่วงสายลับทาย */
+export function voteOut(state: SpyfallState, target: PlayerId, now = T0): SpyfallState {
+  const other = state.players.find((p) => p !== target) as PlayerId;
+  return voteAll(startVote(state, now), (p) => (p === target ? other : target), now);
+}

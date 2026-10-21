@@ -1,4 +1,5 @@
-import type { SpyfallView } from '../rules/types';
+import type { PlayerId } from '@batonboard/engine';
+import type { SpyfallView, VoteRound } from '../rules/types';
 
 /**
  * ตัวช่วยตัดสินว่าจะแสดงปุ่มอะไร — แค่เพื่อ UX
@@ -7,32 +8,36 @@ import type { SpyfallView } from '../rules/types';
 
 export const isParticipant = (v: SpyfallView) => v.players.includes(v.me);
 
-export function canAccuse(v: SpyfallView): boolean {
-  if (!isParticipant(v)) return false;
-  if (v.phase === 'questioning') return !v.usedAccusation.includes(v.me);
-  if (v.phase === 'final-vote') return !v.finalTurns.includes(v.me);
-  return false;
+export function canStartVote(v: SpyfallView, hostId: string): boolean {
+  return v.phase === 'questioning' && v.me === hostId;
 }
 
-export function canPass(v: SpyfallView): boolean {
-  return v.phase === 'final-vote' && isParticipant(v) && !v.finalTurns.includes(v.me);
+/** คนที่โหวตได้ในรอบนี้ (ไม่รวมตัวเอง) */
+export function voteTargets(v: SpyfallView): PlayerId[] {
+  if (!v.vote) return [];
+  return v.vote.candidates.filter((c) => c !== v.me && v.players.includes(c));
 }
 
-export function canBallot(v: SpyfallView): boolean {
+export function canVote(v: SpyfallView): boolean {
   return (
     v.phase === 'voting' &&
     v.vote !== null &&
     isParticipant(v) &&
-    v.me !== v.vote.accused &&
-    !v.vote.voted.includes(v.me)
+    v.vote.myVote === null &&
+    voteTargets(v).length > 0
   );
 }
 
 export function canGuess(v: SpyfallView): boolean {
-  return v.phase === 'questioning' && v.you.role === 'spy';
+  return v.phase === 'guessing' && v.you.role === 'spy';
 }
 
-/** จำนวนคนที่ต้องโหวต (ทุกคนยกเว้นผู้ถูกกล่าวหา) */
-export function voterCount(v: SpyfallView): number {
-  return v.vote ? v.players.filter((p) => p !== v.vote?.accused).length : 0;
+/** คะแนนของรอบโหวตที่ปิดแล้ว เรียงจากมากไปน้อย (นับเฉพาะคนที่ยังอยู่) */
+export function tally(round: VoteRound, players: PlayerId[]): { id: PlayerId; votes: number }[] {
+  const counts = new Map(round.candidates.filter((c) => players.includes(c)).map((c) => [c, 0]));
+  for (const p of players) {
+    const target = round.ballots[p];
+    if (target != null && counts.has(target)) counts.set(target, (counts.get(target) ?? 0) + 1);
+  }
+  return [...counts].map(([id, votes]) => ({ id, votes })).sort((a, b) => b.votes - a.votes);
 }

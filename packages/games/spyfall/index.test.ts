@@ -29,17 +29,28 @@ describe('เกม spyfall ที่ใช้ data จริง', () => {
       if (!location) throw new Error(`unknown location ${state.locationId}`);
       seenLocations.add(location.id);
 
-      // ระหว่างโหวตด้วย
-      const accuser = state.players.find((p) => p !== state.spy) as string;
-      const voting = dispatchAction(
+      // ระหว่างโหวตด้วย (host p1 เริ่มโหวต แล้วสายลับโหวตไปแล้วหนึ่งเสียง)
+      const voter = state.players.find((p) => p !== state.spy) as string;
+      const started = dispatchAction(
         spyfall,
         state,
-        { type: 'ACCUSE', target: state.spy },
-        accuser,
+        { type: 'START_VOTE' },
+        'p1',
         { hostId: 'p1' },
         T0,
         createRng(seed),
       );
+      const voting = started.ok
+        ? dispatchAction(
+            spyfall,
+            started.value,
+            { type: 'VOTE', target: voter },
+            state.spy,
+            { hostId: 'p1' },
+            T0,
+            createRng(seed),
+          )
+        : started;
       for (const s of voting.ok ? [state, voting.value] : [state]) {
         const json = JSON.stringify(spyfall.playerView(s, s.spy));
         expect(json).not.toContain(location.id);

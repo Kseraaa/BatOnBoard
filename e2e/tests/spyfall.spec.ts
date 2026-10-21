@@ -1,6 +1,17 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { accuse, closeAll, m, readRole, rolesOf, startGame, t } from './helpers';
+import {
+  closeAll,
+  guess,
+  m,
+  otherLocation,
+  readRole,
+  rolesOf,
+  startGame,
+  startVoting,
+  t,
+  vote,
+} from './helpers';
 import type { Player } from './helpers';
 
 let players: Player[] = [];
@@ -9,6 +20,16 @@ test.afterEach(async () => {
   await closeAll(players);
   players = [];
 });
+
+/** อ่านบทบาททุกคนแล้วแยกสายลับกับคนอื่น */
+async function sides(list: Player[]) {
+  const roles = await rolesOf(list);
+  const spy = roles.find((r) => r.role.spy)?.player as Player;
+  const agents = roles.filter((r) => !r.role.spy).map((r) => r.player) as [Player, Player, Player];
+  const agentRole = roles.find((r) => !r.role.spy)?.role;
+  const location = agentRole && !agentRole.spy ? agentRole.location : '';
+  return { spy, agents, location };
+}
 
 test('4 คน: สร้างห้อง → เข้าผ่านลิงก์ → เริ่มเกม → มีหน้าจอเดียวที่เป็นสายลับ', async ({
   browser,
@@ -25,73 +46,99 @@ test('4 คน: สร้างห้อง → เข้าผ่านลิ�
   expect(new Set(agents.map((a) => a.location)).size).toBe(1);
   expect(new Set(agents.map((a) => a.role)).size).toBe(3);
 
-  // หน้าจอของสายลับไม่มีชื่อสถานที่ในการ์ด (รายชื่ออ้างอิงมีทุกที่อยู่แล้ว จึงเช็กแค่การ์ด)
+  // หน้าจอของสายลับไม่มีชื่อสถานที่ในการ์ด และยังเปิดตัวทายไม่ได้
   const spyPage = spies[0]?.player.page as Page;
   await expect(spyPage.getByTestId('role-location')).toHaveCount(0);
-});
-
-test('กล่าวหาสายลับ → ทุกคนเห็นด้วย → หน้า reveal ถูกต้องทุกจอ', async ({ browser }) => {
-  ({ players } = await startGame(browser));
-  const roles = await rolesOf(players);
-  const spy = roles.find((r) => r.role.spy)?.player as Player;
-  const [accuser, ...voters] = roles.filter((r) => !r.role.spy).map((r) => r.player) as [
-    Player,
-    ...Player[],
-  ];
-
-  await accuse(accuser.page, spy.name);
-
-  // ทุกจอเข้าช่วงโหวต ผู้ถูกกล่าวหาโหวตไม่ได้
-  for (const p of players) await expect(p.page.locator('[data-phase="voting"]')).toBeVisible();
-  await expect(spy.page.getByText(m.vote.youAreAccused)).toBeVisible();
-  await expect(spy.page.getByRole('button', { name: m.vote.agree, exact: true })).toHaveCount(0);
-  await expect(accuser.page.getByText(m.vote.waiting)).toBeVisible();
-
-  for (const v of voters)
-    await v.page.getByRole('button', { name: m.vote.agree, exact: true }).click();
-
-  for (const p of players) {
-    await expect(p.page.getByTestId('reveal-winner')).toHaveText(m.reveal.agentsWin);
-    await expect(p.page.getByTestId('reveal-spy')).toHaveText(spy.name);
-    await expect(p.page.getByText(m.reveal.reasons['spy-caught'])).toBeVisible();
+  await expect(spyPage.getByTestId('spy-guess')).toHaveCount(0);
+  // เฉพาะ host เห็นปุ่มเริ่มโหวต
+  for (const [i, p] of players.entries()) {
+    await expect(p.page.getByRole('button', { name: m.startVote.button, exact: true })).toHaveCount(
+      i === 0 ? 1 : 0,
+    );
   }
 });
 
-test('กล่าวหาผิดคน → ทุกคนเห็นด้วย → สายลับชนะ', async ({ browser }) => {
+test('โหวตจับสายลับได้ → สายลับทายผิด → เฉพาะคนที่โหวตถูกชนะ', async ({ browser }) => {
   ({ players } = await startGame(browser));
-  const roles = await rolesOf(players);
-  const spy = roles.find((r) => r.role.spy)?.player as Player;
-  const [accuser, innocent, other] = roles.filter((r) => !r.role.spy).map((r) => r.player) as [
-    Player,
-    Player,
-    Player,
-  ];
+  const { spy, agents, location } = await sides(players);
+  const [a, b, c] = agents;
 
-  await accuse(accuser.page, innocent.name);
-  await other.page.getByRole('button', { name: m.vote.agree, exact: true }).click();
-  await spy.page.getByRole('button', { name: m.vote.agree, exact: true }).click();
+  await startVoting(players[0]?.page as Page);
+  for (const p of players) await expect(p.page.locator('[data-phase="voting"]')).toBeVisible();
+
+  // ฝ่ายผู้เล่นทั้ง 3 คนโหวตสายลับ สายลับโหวต a → สายลับได้ 3 เสียง
+  await vote(a.page, spy.name);
+  await vote(b.page, spy.name);
+  await vote(c.page, spy.name);
+  await vote(spy.page, a.name);
+
+  for (const p of players) {
+    await expect(p.page.locator('[data-phase="guessing"]')).toBeVisible();
+    await expect(p.page.getByTestId('vote-chosen')).toHaveText(m.result.chosen(spy.name));
+  }
+  // คนที่ไม่ใช่สายลับรอ สายลับเห็นแผงทาย
+  await expect(a.page.getByText(m.guess.waiting)).toBeVisible();
+  await expect(spy.page.getByText(m.guess.caughtHelp)).toBeVisible();
+
+  await guess(spy.page, await otherLocation(spy.page, location));
+
+  for (const p of players) {
+    await expect(p.page.getByTestId('reveal-winner')).toHaveText(m.reveal.votersWin);
+    await expect(p.page.getByTestId('reveal-spy')).toHaveText(spy.name);
+    await expect(p.page.getByText(m.reveal.reasons.caught)).toBeVisible();
+    for (const winner of [a, b, c]) {
+      await expect(p.page.getByTestId('reveal-winners')).toContainText(winner.name);
+    }
+  }
+});
+
+test('โหวตผิดคน → สายลับทายถูก → สายลับชนะ', async ({ browser }) => {
+  ({ players } = await startGame(browser));
+  const { spy, agents, location } = await sides(players);
+  const [a, b, c] = agents;
+
+  await startVoting(players[0]?.page as Page);
+  await vote(a.page, b.name);
+  await vote(b.page, a.name);
+  await vote(c.page, a.name);
+  await vote(spy.page, a.name);
+
+  for (const p of players) {
+    await expect(p.page.getByTestId('vote-chosen')).toHaveText(m.result.chosen(a.name));
+  }
+  await expect(spy.page.getByText(m.guess.missedHelp)).toBeVisible();
+  await guess(spy.page, location);
 
   for (const p of players) {
     await expect(p.page.getByTestId('reveal-winner')).toHaveText(m.reveal.spyWins);
-    await expect(p.page.getByTestId('reveal-spy')).toHaveText(spy.name);
+    await expect(p.page.getByText(m.reveal.spyGuessed(location))).toBeVisible();
   }
 });
 
-test('โหวตไม่ผ่าน → กลับช่วงถามตอบ และผู้กล่าวหาใช้สิทธิ์ไม่ได้อีก', async ({ browser }) => {
+test('คะแนนเสมอ → โหวตใหม่เฉพาะคนที่เสมอ', async ({ browser }) => {
   ({ players } = await startGame(browser));
-  const roles = await rolesOf(players);
-  const [accuser, target, disagree] = roles.filter((r) => !r.role.spy).map((r) => r.player) as [
-    Player,
-    Player,
-    Player,
-  ];
+  const { spy, agents } = await sides(players);
+  const [a, b, c] = agents;
 
-  await accuse(accuser.page, target.name);
-  await disagree.page.getByRole('button', { name: m.vote.disagree, exact: true }).click();
+  await startVoting(players[0]?.page as Page);
+  // a 2 เสียง (b, c) และ b 2 เสียง (a, สายลับ)
+  await vote(a.page, b.name);
+  await vote(b.page, a.name);
+  await vote(c.page, a.name);
+  await vote(spy.page, b.name);
 
-  for (const p of players) await expect(p.page.locator('[data-phase="questioning"]')).toBeVisible();
-  await expect(accuser.page.getByRole('button', { name: m.accuse, exact: true })).toHaveCount(0);
-  await expect(disagree.page.getByRole('button', { name: m.accuse, exact: true })).toHaveCount(3);
+  for (const p of players) await expect(p.page.getByText(m.vote.revoteTitle)).toBeVisible();
+  // c เลือกได้แค่ a กับ b, a เลือกได้แค่ b
+  await expect(c.page.getByTestId('vote-panel').getByRole('button')).toHaveCount(2);
+  await expect(a.page.getByTestId('vote-panel').getByRole('button')).toHaveCount(1);
+
+  await vote(a.page, b.name);
+  await vote(b.page, a.name);
+  await vote(c.page, b.name);
+  await vote(spy.page, b.name);
+  for (const p of players) {
+    await expect(p.page.getByTestId('vote-chosen')).toHaveText(m.result.chosen(b.name));
+  }
 });
 
 test('รีเฟรชกลางเกมแล้วกลับมาเห็น view เดิม', async ({ browser }) => {
@@ -112,36 +159,14 @@ test('รีเฟรชกลางเกมแล้วกลับมาเ�
   ).toBeVisible();
   await expect(host.page.getByText(m.offline)).toHaveCount(0);
 
-  // รีเฟรชระหว่างโหวต: กลับมายังเห็นแผงโหวตและโหวตต่อได้
-  const agents = before.filter((r) => !r.role.spy).map((r) => r.player) as [Player, Player, Player];
-  const spy = before.find((r) => r.role.spy)?.player as Player;
-  await accuse(agents[0].page, spy.name);
-  await agents[1].page.reload();
-  await expect(agents[1].page.locator('[data-phase="voting"]')).toBeVisible();
-  await agents[1].page.getByRole('button', { name: m.vote.agree, exact: true }).click();
-  await agents[2].page.getByRole('button', { name: m.vote.agree, exact: true }).click();
-  for (const p of players) {
-    await expect(p.page.getByTestId('reveal-winner')).toHaveText(m.reveal.agentsWin);
-  }
-});
-
-test('สายลับเดาสถานที่ถูก → สายลับชนะ', async ({ browser }) => {
-  ({ players } = await startGame(browser));
-  const roles = await rolesOf(players);
-  const spy = roles.find((r) => r.role.spy)?.player as Player;
-  const agentRole = roles.find((r) => !r.role.spy)?.role;
-  const location = agentRole && !agentRole.spy ? agentRole.location : '';
-
-  await spy.page.getByRole('button', { name: m.spy.guess, exact: true }).click();
-  await spy.page
-    .getByTestId('spy-guess')
-    .getByRole('button', { name: location, exact: true })
-    .click();
-  await expect(spy.page.getByText(m.spy.confirmGuess(location))).toBeVisible();
-  await spy.page.getByRole('button', { name: m.confirm, exact: true }).click();
-
-  for (const p of players) {
-    await expect(p.page.getByTestId('reveal-winner')).toHaveText(m.reveal.spyWins);
-    await expect(p.page.getByText(m.reveal.spyGuessed(location))).toBeVisible();
-  }
+  // รีเฟรชหลังโหวตไปแล้ว: ยังจำว่าโหวตใคร และคนอื่นโหวตต่อได้
+  const { spy, agents } = await sides(players);
+  await startVoting(host.page);
+  await vote(agents[0].page, spy.name);
+  await agents[0].page.reload();
+  await expect(agents[0].page.getByText(m.vote.voted(spy.name))).toBeVisible();
+  await vote(agents[1].page, spy.name);
+  await vote(agents[2].page, spy.name);
+  await vote(spy.page, agents[0].name);
+  for (const p of players) await expect(p.page.locator('[data-phase="guessing"]')).toBeVisible();
 });

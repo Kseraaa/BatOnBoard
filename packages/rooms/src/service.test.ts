@@ -1,3 +1,4 @@
+import { GUESS_MS } from '@batonboard/spyfall/rules';
 import type { SpyfallView } from '@batonboard/spyfall/rules';
 import { describe, expect, it } from 'vitest';
 import { HOST_GRACE_MS, OFFLINE_AFTER_MS, ROOM_TTL_SECONDS } from './room';
@@ -133,11 +134,7 @@ describe('เริ่มเกมและ view รายคน', () => {
 describe('action pipeline', () => {
   it('action ผ่านแล้วทุกคนเห็น phase ใหม่', async () => {
     const r = await started(4);
-    const agentIdx = (await Promise.all(r.players.map((_, i) => r.poll(i)))).findIndex(
-      (s) => view(s).you.role === 'agent',
-    );
-    const target = r.players[(agentIdx + 1) % 4]?.playerId;
-    must(await r.service.action(r.code, r.token(agentIdx), { type: 'ACCUSE', target }));
+    must(await r.service.action(r.code, r.token(0), { type: 'START_VOTE' }));
     for (let i = 0; i < 4; i++) expect(view(await r.poll(i)).phase).toBe('voting');
   });
 
@@ -152,7 +149,7 @@ describe('action pipeline', () => {
       error: 'wrong-phase',
     });
     const lobby = await roomWith(3);
-    expect(await lobby.service.action(lobby.code, lobby.token(0), { type: 'PASS' })).toEqual({
+    expect(await lobby.service.action(lobby.code, lobby.token(0), { type: 'START_VOTE' })).toEqual({
       ok: false,
       error: 'not-playing',
     });
@@ -162,56 +159,54 @@ describe('action pipeline', () => {
     const r = await started(5);
     const snaps = await Promise.all(r.players.map((_, i) => r.poll(i)));
     const spyIdx = snaps.findIndex((s) => view(s).you.role === 'spy');
-    const agents = [0, 1, 2, 3, 4].filter((i) => i !== spyIdx);
-    const [accuser, a, b, c] = agents as [number, number, number, number];
-    must(
-      await r.service.action(r.code, r.token(accuser), {
-        type: 'ACCUSE',
-        target: r.players[spyIdx]?.playerId,
-      }),
-    );
-    // สามคนโหวตพร้อมกัน — ทุกคำสั่งโหลดห้อง rev เดียวกัน คนที่เขียนทีหลังต้องลองใหม่
+    const spyId = r.players[spyIdx]?.playerId as string;
+    const someone = r.players[(spyIdx + 1) % 5]?.playerId as string;
+    must(await r.service.action(r.code, r.token(0), { type: 'START_VOTE' }));
+    // ทั้ง 5 คนโหวตพร้อมกัน — ทุกคำสั่งโหลดห้อง rev เดียวกัน คนที่เขียนทีหลังต้องลองใหม่
     const results = await Promise.all(
-      [a, b, c].map((i) => r.service.action(r.code, r.token(i), { type: 'BALLOT', agree: true })),
+      r.players.map((_, i) =>
+        r.service.action(r.code, r.token(i), {
+          type: 'VOTE',
+          target: i === spyIdx ? someone : spyId,
+        }),
+      ),
     );
     expect(results.every((x) => x.ok)).toBe(true);
-    expect(view(await r.poll(0)).result).toEqual({ winner: 'agents', reason: 'spy-caught' });
+    const after = view(await r.poll(0));
+    expect(after.phase).toBe('guessing');
+    expect(after.accused).toBe(spyId);
+    expect(Object.values(after.voteRounds[0]?.ballots ?? {}).filter(Boolean)).toHaveLength(5);
   });
 });
 
 describe('เวลา (lazy deadline)', () => {
-  it('หมดเวลาแล้ว request ถัดไปพาเกมเข้า final-vote', async () => {
+  it('หมดเวลาแล้ว request ถัดไปพาเกมเข้าช่วงโหวต', async () => {
     const r = await started(3);
     const deadline = view(await r.poll(0)).deadline as number;
     r.advance(deadline - r.clock.time - 1);
     expect(view(await r.poll(1)).phase).toBe('questioning');
     r.advance(1);
-    expect(view(await r.poll(1)).phase).toBe('final-vote');
+    expect(view(await r.poll(1)).phase).toBe('voting');
   });
 
-  it('deadline ถูกเรียก ณ เวลาจริง แม้ request มาช้า (เวลาหลังโหวตไม่ผ่านไม่คลาด)', async () => {
+  it('deadline ถูกเรียก ณ เวลาจริง แม้ request มาช้า (เวลาทายของสายลับไม่คลาด)', async () => {
     const r = await started(3);
-    const roundDeadline = view(await r.poll(0)).deadline as number;
     r.advance(10_000);
-    const accuse = must(
-      await r.service.action(r.code, r.token(0), {
-        type: 'ACCUSE',
-        target: r.players[1]?.playerId,
-      }),
-    );
-    const voteDeadline = view(accuse).vote?.deadline as number;
+    const voting = must(await r.service.action(r.code, r.token(0), { type: 'START_VOTE' }));
+    const voteDeadline = view(voting).deadline as number;
     // ไม่มีใคร poll จนเลยเวลาโหวตไป 20 วินาที
     r.advance(voteDeadline - r.clock.time + 20_000);
     const snap = await r.poll(2);
-    expect(view(snap).phase).toBe('questioning');
-    // เวลาเดินต่อจากตอนโหวตหมดเวลา ไม่ใช่จากตอนที่มี request เข้ามา
-    expect(view(snap).deadline).toBe(voteDeadline + (roundDeadline - accuse.serverNow));
+    expect(view(snap).phase).toBe('guessing');
+    // เวลาทายนับจากตอนโหวตหมดเวลา ไม่ใช่จากตอนที่มี request เข้ามา
+    expect(view(snap).deadline).toBe(voteDeadline + GUESS_MS);
   });
 
   it('หลาย deadline ที่เลยมาแล้วถูกเรียกต่อกันใน request เดียว', async () => {
     const r = await started(3);
     r.advance(60 * 60_000);
-    expect(view(await r.poll(0)).result).toEqual({ winner: 'spy', reason: 'time-up' });
+    // ถามตอบ → โหวต (ไม่มีใครโหวต) → สายลับไม่ทาย = โหวตผิด + ทายผิด
+    expect(view(await r.poll(0)).result).toEqual({ winner: null, winners: [], reason: 'missed' });
   });
 });
 
@@ -279,10 +274,10 @@ describe('เตะและออก', () => {
     const spyIdx = snaps.findIndex((s) => view(s).you.role === 'spy');
     if (spyIdx === 0) {
       must(await r.service.leave(r.code, r.token(0)));
-      expect(view(await r.poll(1)).result).toEqual({ winner: 'agents', reason: 'spy-left' });
+      expect(view(await r.poll(1)).result).toMatchObject({ winner: 'voters', reason: 'spy-left' });
     } else {
       must(await r.service.kick(r.code, r.token(0), { playerId: r.players[spyIdx]?.playerId }));
-      expect(view(await r.poll(0)).result).toEqual({ winner: 'agents', reason: 'spy-left' });
+      expect(view(await r.poll(0)).result).toMatchObject({ winner: 'voters', reason: 'spy-left' });
     }
   });
 

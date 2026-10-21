@@ -1,6 +1,6 @@
 import { createRng, fireDeadline, removePlayer, startGame } from '@batonboard/engine';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_DURATION_MS, FINAL_VOTE_MS, SpyfallError, VOTE_MS } from './constants';
+import { DEFAULT_DURATION_MS, GUESS_MS, SpyfallError, VOTE_MS } from './constants';
 import { createSpyfall } from './game';
 import type { SpyfallState } from './types';
 import {
@@ -10,24 +10,14 @@ import {
   players,
   spyfall,
   start,
+  startVote,
   T0,
   testLocations,
   timeUp,
   tryAct,
+  voteAll,
+  voteOut,
 } from './fixtures';
-
-/** ทุกคนที่ต้องโหวต (ไม่ใช่ผู้กล่าวหาและผู้ถูกกล่าวหา) โหวตตาม agree */
-function voteAll(state: SpyfallState, agree: boolean, now = T0): SpyfallState {
-  const vote = state.vote;
-  if (!vote) throw new Error('no vote');
-  let s = state;
-  for (const p of state.players) {
-    if (p !== vote.accuser && p !== vote.accused && s.phase === 'voting') {
-      s = act(s, p, { type: 'BALLOT', agree }, now);
-    }
-  }
-  return s;
-}
 
 const wrongLocation = (state: SpyfallState) =>
   testLocations.find((l) => l.id !== state.locationId)?.id as string;
@@ -88,267 +78,133 @@ describe('แจกการ์ด', () => {
   });
 });
 
-describe('กล่าวหา', () => {
-  it('ผู้เล่นกล่าวหาได้คนละ 1 ครั้งต่อรอบ', () => {
-    let s = start(5, 2);
-    const [a, b] = agents(s) as [string, string];
-    s = act(s, s.spy, { type: 'ACCUSE', target: a });
-    s = voteAll(s, false);
-    expect(s.phase).toBe('questioning');
-    expect(s.usedAccusation).toEqual([s.spy]);
-
-    expect(tryAct(s, s.spy, { type: 'ACCUSE', target: b })).toBe(SpyfallError.AccusationUsed);
-    // คนอื่นยังใช้สิทธิ์ของตัวเองได้
-    expect(tryAct(s, a, { type: 'ACCUSE', target: b })).toBeNull();
-  });
-
-  it('สิทธิ์กลับมาใหม่ในรอบถัดไป', () => {
-    let s = start(4, 2);
-    const [a] = agents(s) as [string];
-    s = act(s, s.spy, { type: 'ACCUSE', target: a });
-    s = voteAll(s, false);
-    s = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
-    s = act(s, HOST, { type: 'NEXT_ROUND' });
-    expect(s.usedAccusation).toEqual([]);
-  });
-
-  it('กล่าวหาตัวเองหรือคนที่ไม่อยู่ในรอบไม่ได้', () => {
-    const s = start(4);
-    expect(tryAct(s, 'p-bob', { type: 'ACCUSE', target: 'p-bob' })).toBe(
-      SpyfallError.CannotAccuseSelf,
-    );
-    expect(tryAct(s, 'p-bob', { type: 'ACCUSE', target: 'p-zed' })).toBe(
-      SpyfallError.UnknownPlayer,
-    );
-  });
-});
-
-describe('โหวต', () => {
-  it('ผ่านเมื่อทุกคนยกเว้นผู้ถูกกล่าวหาเห็นด้วย และผู้กล่าวหานับเป็นเห็นด้วยอัตโนมัติ', () => {
-    let s = start(5, 4);
-    const [a] = agents(s) as [string];
-    s = act(s, a, { type: 'ACCUSE', target: s.spy });
-    expect(s.vote?.ballots).toEqual({ [a]: true });
-
-    const others = agents(s).filter((p) => p !== a);
-    for (const p of others.slice(0, -1)) {
-      s = act(s, p, { type: 'BALLOT', agree: true });
-      expect(s.phase).toBe('voting');
-    }
-    s = act(s, others.at(-1) as string, { type: 'BALLOT', agree: true });
-    expect(s.phase).toBe('reveal');
-  });
-
-  it('ผู้ถูกกล่าวหาโหวตไม่ได้ และโหวตซ้ำไม่ได้', () => {
-    let s = start(5, 4);
-    const [a, b, c] = agents(s) as [string, string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    expect(tryAct(s, b, { type: 'BALLOT', agree: false })).toBe(SpyfallError.AccusedCannotVote);
-    expect(tryAct(s, a, { type: 'BALLOT', agree: false })).toBe(SpyfallError.AlreadyVoted);
-    s = act(s, c, { type: 'BALLOT', agree: true });
-    expect(tryAct(s, c, { type: 'BALLOT', agree: false })).toBe(SpyfallError.AlreadyVoted);
-  });
-
-  it('มีคนไม่เห็นด้วยคนเดียวก็ไม่ผ่านทันที', () => {
-    let s = start(6, 4);
-    const [a, b, c] = agents(s) as [string, string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    s = act(s, c, { type: 'BALLOT', agree: false });
-    expect(s.phase).toBe('questioning');
-    expect(s.vote).toBeNull();
-  });
-
-  it('จับสายลับได้ = ฝ่ายผู้เล่นชนะ', () => {
-    let s = start(4, 5);
-    s = act(s, agents(s)[0] as string, { type: 'ACCUSE', target: s.spy });
-    s = voteAll(s, true);
-    expect(s.result).toEqual({ winner: 'agents', reason: 'spy-caught' });
-    for (const p of agents(s)) expect(s.scores[p]).toBe(1);
-    expect(s.scores[s.spy]).toBe(0);
-  });
-
-  it('จับผิดคน = สายลับชนะ', () => {
-    let s = start(4, 5);
-    const [a, b] = agents(s) as [string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    s = voteAll(s, true);
-    expect(s.result).toEqual({ winner: 'spy', reason: 'innocent-convicted' });
-    expect(s.scores[s.spy]).toBe(1);
-  });
-
-  it('หมดเวลาโหวต = ไม่ผ่าน (คนที่ไม่โหวตนับเป็นไม่เห็นด้วย)', () => {
-    let s = start(5, 6);
-    const [a, b, c] = agents(s) as [string, string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b }, T0 + 1_000);
-    s = act(s, c, { type: 'BALLOT', agree: true }, T0 + 2_000);
-    expect(spyfall.nextDeadline?.(s)).toBe(T0 + 1_000 + VOTE_MS);
-    expect(fireDeadline(spyfall, s, T0 + 1_000 + VOTE_MS - 1)).toBe(s);
-    s = fireDeadline(spyfall, s, T0 + 1_000 + VOTE_MS);
-    expect(s.phase).toBe('questioning');
-    expect(s.result).toBeNull();
-  });
-
-  it('view แสดงว่าใครโหวตแล้ว แต่ไม่แสดงว่าโหวตอะไร', () => {
-    let s = start(5, 6);
-    const [a, b, c] = agents(s) as [string, string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    s = act(s, c, { type: 'BALLOT', agree: true });
-    const view = spyfall.playerView(s, b);
-    expect(view.vote).toEqual({ accuser: a, accused: b, voted: [a, c], deadline: T0 + VOTE_MS });
-  });
-});
-
-describe('ผลโหวตล่าสุด (lastVote)', () => {
-  it('ระหว่างโหวตยังไม่มี แล้วเปิดเผยว่าใครโหวตอะไรหลังตัดสินว่าไม่ผ่าน', () => {
-    let s = start(6, 4);
-    const [a, b, c] = agents(s) as [string, string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    expect(spyfall.playerView(s, c).lastVote).toBeNull();
-    s = act(s, c, { type: 'BALLOT', agree: false });
-    const ballots = Object.fromEntries(
-      s.players.filter((p) => p !== b).map((p) => [p, p === a ? true : p === c ? false : null]),
-    );
-    const expected = { accuser: a, accused: b, final: false, ballots, passed: false };
-    expect(s.lastVote).toEqual(expected);
-    expect(spyfall.playerView(s, s.spy).lastVote).toEqual(expected);
-  });
-
-  it('โหวตผ่านเก็บผลไว้ให้ reveal', () => {
-    let s = start(4, 5);
-    const a = agents(s)[0] as string;
-    s = act(s, a, { type: 'ACCUSE', target: s.spy });
-    s = voteAll(s, true);
-    expect(s.phase).toBe('reveal');
-    expect(s.lastVote?.passed).toBe(true);
-    expect(Object.values(s.lastVote?.ballots ?? {})).toEqual([true, true, true]);
-  });
-
-  it('หมดเวลาโหวต: คนที่ไม่ได้โหวตเป็น null', () => {
-    let s = start(4, 6);
-    const [a, b] = agents(s) as [string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    s = fireDeadline(spyfall, s, T0 + VOTE_MS);
-    expect(s.lastVote?.passed).toBe(false);
-    expect(Object.values(s.lastVote?.ballots ?? {}).filter((v) => v === null)).toHaveLength(2);
-  });
-
-  it('จบรอบด้วยเหตุอื่นหรือแจกไพ่ใหม่ = ล้างผลโหวต', () => {
-    let s = start(6, 4);
-    const [a, b, c] = agents(s) as [string, string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    s = act(s, c, { type: 'BALLOT', agree: false });
-    expect(s.lastVote).not.toBeNull();
-    const guessed = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
-    expect(guessed.lastVote).toBeNull();
-    const next = act(guessed, HOST, { type: 'NEXT_ROUND' }, T0 + 5_000);
-    expect(next.lastVote).toBeNull();
-  });
-});
-
-describe('เวลา', () => {
-  it('หยุดตอนโหวตและเดินต่อจาก pausedRemaining', () => {
-    let s = start(4, 7);
-    const [a, b] = agents(s) as [string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b }, T0 + 100_000);
-    expect(s.deadline).toBeNull();
-    expect(s.pausedRemaining).toBe(DEFAULT_DURATION_MS - 100_000);
-    expect(spyfall.playerView(s, a).pausedRemaining).toBe(DEFAULT_DURATION_MS - 100_000);
-
-    s = voteAll(s, false, T0 + 130_000);
-    expect(s.pausedRemaining).toBeNull();
-    expect(s.deadline).toBe(T0 + 130_000 + DEFAULT_DURATION_MS - 100_000);
-  });
-
-  it('หมดเวลาถามตอบ → final-vote ที่มีเวลาของตัวเอง', () => {
-    let s = start(4, 8);
-    expect(fireDeadline(spyfall, s, T0 + DEFAULT_DURATION_MS - 1)).toBe(s);
-    s = timeUp(s);
-    expect(s.phase).toBe('final-vote');
-    expect(s.deadline).toBe(T0 + DEFAULT_DURATION_MS + FINAL_VOTE_MS);
-  });
-});
-
-describe('final-vote', () => {
-  it('ทุกคนเสนอชื่อได้ใหม่ แม้ใช้สิทธิ์ไปแล้วช่วงถามตอบ', () => {
-    let s = start(4, 9);
-    const [a, b] = agents(s) as [string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    s = voteAll(s, false);
-    s = timeUp(s);
-    s = act(s, a, { type: 'ACCUSE', target: s.spy });
+describe('เริ่มโหวต', () => {
+  it('host กดเริ่มโหวตได้ระหว่างถามตอบ: ทุกคนเป็นผู้สมัคร และมีเวลาโหวต', () => {
+    const s = startVote(start(4), T0 + 30_000);
     expect(s.phase).toBe('voting');
-    expect(s.vote?.final).toBe(true);
-    s = voteAll(s, true);
-    expect(s.result).toEqual({ winner: 'agents', reason: 'spy-caught' });
+    expect(s.voting).toEqual({ candidates: s.players, ballots: {} });
+    expect(s.deadline).toBe(T0 + 30_000 + VOTE_MS);
   });
 
-  it('โหวตไม่ผ่านกลับ final-vote และใช้สิทธิ์ได้คนละครั้ง', () => {
-    let s = timeUp(start(4, 10));
-    const [a, b] = agents(s) as [string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    s = voteAll(s, false);
-    expect(s.phase).toBe('final-vote');
-    expect(tryAct(s, a, { type: 'ACCUSE', target: s.spy })).toBe(SpyfallError.FinalTurnUsed);
-    expect(tryAct(s, a, { type: 'PASS' })).toBe(SpyfallError.FinalTurnUsed);
+  it('คนที่ไม่ใช่ host เริ่มไม่ได้ และเริ่มซ้ำไม่ได้', () => {
+    const s = start(4);
+    expect(tryAct(s, 'p-bob', { type: 'START_VOTE' })).toBe(SpyfallError.NotHost);
+    expect(tryAct(startVote(s), HOST, { type: 'START_VOTE' })).toBe(SpyfallError.WrongPhase);
   });
 
-  it('ทุกคนใช้สิทธิ์ครบแล้วไม่มีใครถูกจับ = สายลับชนะ', () => {
-    let s = timeUp(start(4, 11));
-    for (const p of s.players) s = act(s, p, { type: 'PASS' });
-    expect(s.result).toEqual({ winner: 'spy', reason: 'spy-survived' });
-  });
-
-  it('โหวตสุดท้ายไม่ผ่าน → ครบทุกคน = สายลับชนะ', () => {
-    let s = timeUp(start(3, 12));
-    const [a, b] = agents(s) as [string, string];
-    s = act(s, s.spy, { type: 'PASS' });
-    s = act(s, b, { type: 'PASS' });
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    s = act(s, s.spy, { type: 'BALLOT', agree: false });
-    expect(s.result).toEqual({ winner: 'spy', reason: 'spy-survived' });
-  });
-
-  it('final-vote หมดเวลา = สายลับชนะ', () => {
-    const s = timeUp(timeUp(start(4, 13)));
-    expect(s.result).toEqual({ winner: 'spy', reason: 'time-up' });
-  });
-
-  it('PASS ใช้ได้แค่ใน final-vote', () => {
-    expect(tryAct(start(4), 'p-ann', { type: 'PASS' })).toBe(SpyfallError.WrongPhase);
+  it('หมดเวลาถามตอบ → เริ่มโหวตเอง', () => {
+    const s = start(4, 8);
+    expect(fireDeadline(spyfall, s, T0 + DEFAULT_DURATION_MS - 1)).toBe(s);
+    const voting = timeUp(s);
+    expect(voting.phase).toBe('voting');
+    expect(voting.deadline).toBe(T0 + DEFAULT_DURATION_MS + VOTE_MS);
   });
 });
 
-describe('สายลับเดาสถานที่', () => {
-  it('เดาถูก = สายลับชนะ', () => {
-    let s = start(4, 14);
-    s = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
-    expect(s.result).toEqual({ winner: 'spy', reason: 'spy-guessed' });
-    expect(s.spyGuess).toBe(s.locationId);
+describe('ต่างคนต่างโหวต', () => {
+  it('โหวตได้คนละครั้ง โหวตตัวเองหรือคนนอกรอบไม่ได้', () => {
+    let s = startVote(start(4));
+    expect(tryAct(s, 'p-bob', { type: 'VOTE', target: 'p-bob' })).toBe(SpyfallError.CannotVoteSelf);
+    expect(tryAct(s, 'p-bob', { type: 'VOTE', target: 'p-zed' })).toBe(SpyfallError.NotACandidate);
+    s = act(s, 'p-bob', { type: 'VOTE', target: 'p-cat' });
+    expect(tryAct(s, 'p-bob', { type: 'VOTE', target: 'p-dan' })).toBe(SpyfallError.AlreadyVoted);
   });
 
-  it('เดาผิด = ฝ่ายผู้เล่นชนะ', () => {
-    let s = start(4, 14);
-    const guess = wrongLocation(s);
-    s = act(s, s.spy, { type: 'SPY_GUESS', locationId: guess });
-    expect(s.result).toEqual({ winner: 'agents', reason: 'spy-guessed-wrong' });
-    expect(spyfall.playerView(s, 'p-ann').reveal?.spyGuess).toBe(guess);
+  it('view บอกว่าใครโหวตแล้ว แต่ไม่บอกว่าโหวตใคร ยกเว้นบัตรของตัวเอง', () => {
+    let s = startVote(start(4));
+    s = act(s, 'p-bob', { type: 'VOTE', target: 'p-cat' });
+    expect(spyfall.playerView(s, 'p-bob').vote).toEqual({
+      round: 1,
+      candidates: s.players,
+      voted: ['p-bob'],
+      myVote: 'p-cat',
+    });
+    const other = spyfall.playerView(s, 'p-dan');
+    expect(other.vote).toEqual({ round: 1, candidates: s.players, voted: ['p-bob'], myVote: null });
+    expect(other.voteRounds).toEqual([]);
   });
 
-  it('เดาไม่ได้ระหว่างโหวตและใน final-vote', () => {
-    let s = start(4, 15);
+  it('เสียงส่วนใหญ่เลือก แล้วเข้าช่วงสายลับทาย', () => {
+    const s = start(5, 2);
     const [a, b] = agents(s) as [string, string];
-    const voting = act(s, a, { type: 'ACCUSE', target: b });
-    expect(tryAct(voting, voting.spy, { type: 'SPY_GUESS', locationId: s.locationId })).toBe(
-      SpyfallError.WrongPhase,
-    );
+    // a ได้ 4 เสียง (ทุกคนยกเว้นตัวเอง) b ได้ 1 เสียง (จาก a)
+    const votes = Object.fromEntries(s.players.map((p) => [p, p === a ? b : a]));
+    const out = voteAll(startVote(s), (p) => votes[p] as string, T0 + 1_000);
+    expect(out.phase).toBe('guessing');
+    expect(out.accused).toBe(a);
+    expect(out.deadline).toBe(T0 + 1_000 + GUESS_MS);
+    expect(out.voteRounds).toHaveLength(1);
+    expect(out.voteRounds[0]?.ballots).toEqual(votes);
+  });
+
+  it('สายลับโหวตด้วยและนับคะแนน', () => {
+    const s = start(4, 3);
+    const [a, b, c] = agents(s) as [string, string, string];
+    // a กับ b โหวตกันเอง c โหวต a สายลับโหวต b → เสมอ 2-2 ถ้าไม่นับสายลับจะเป็น a ชนะ 2-1
+    const pick: Record<string, string> = { [a]: b, [b]: a, [c]: a, [s.spy]: b };
+    const out = voteAll(startVote(s), (p) => pick[p] as string);
+    expect(out.phase).toBe('voting');
+    expect(out.voting?.candidates.sort()).toEqual([a, b].sort());
+  });
+
+  it('คะแนนเสมอ → โหวตใหม่เฉพาะคนที่เสมอ แล้วตัดสินจากรอบใหม่', () => {
+    const s = start(4, 4);
+    const [a, b, c] = agents(s) as [string, string, string];
+    let out = voteAll(startVote(s), (p) => ({ [a]: b, [b]: a, [c]: a, [s.spy]: b })[p] as string);
+    expect(out.voteRounds).toHaveLength(1);
+    expect(spyfall.playerView(out, c).vote?.round).toBe(2);
+    // ผู้สมัครรอบสองเลือกได้แค่คนที่เสมอ
+    expect(tryAct(out, a, { type: 'VOTE', target: c })).toBe(SpyfallError.NotACandidate);
+    out = voteAll(out, (p) => (p === b ? a : b));
+    expect(out.phase).toBe('guessing');
+    expect(out.accused).toBe(b);
+    expect(out.voteRounds).toHaveLength(2);
+  });
+
+  it('เสมออีกครั้งในรอบสอง = ไม่มีใครถูกเลือก (นับเป็นโหวตผิด)', () => {
+    const s = start(4, 4);
+    const [a, b, c] = agents(s) as [string, string, string];
+    const tie = (p: string) => ({ [a]: b, [b]: a, [c]: a, [s.spy]: b })[p] as string;
+    const out = voteAll(voteAll(startVote(s), tie), tie);
+    expect(out.phase).toBe('guessing');
+    expect(out.accused).toBeNull();
+  });
+
+  it('หมดเวลาโหวต: คนที่ไม่โหวตงดออกเสียง ตัดสินจากบัตรที่มี', () => {
+    let s = startVote(start(4, 5));
+    s = act(s, 'p-bob', { type: 'VOTE', target: 'p-cat' });
     s = timeUp(s);
+    expect(s.phase).toBe('guessing');
+    expect(s.accused).toBe('p-cat');
+    expect(s.voteRounds[0]?.ballots).toEqual({
+      'p-ann': null,
+      'p-bob': 'p-cat',
+      'p-cat': null,
+      'p-dan': null,
+    });
+  });
+
+  it('ไม่มีใครโหวตเลย = ไม่มีใครถูกเลือก ไม่ต้องโหวตใหม่', () => {
+    const s = timeUp(startVote(start(4, 5)));
+    expect(s.phase).toBe('guessing');
+    expect(s.accused).toBeNull();
+    expect(s.voteRounds).toHaveLength(1);
+  });
+});
+
+describe('สายลับทายสถานที่', () => {
+  it('ห้ามเปิดตัวก่อน: ทายระหว่างถามตอบหรือโหวตไม่ได้', () => {
+    const s = start(4, 14);
     expect(tryAct(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId })).toBe(
       SpyfallError.WrongPhase,
     );
+    expect(tryAct(startVote(s), s.spy, { type: 'SPY_GUESS', locationId: s.locationId })).toBe(
+      SpyfallError.WrongPhase,
+    );
   });
 
-  it('คนที่ไม่ใช่สายลับเดาไม่ได้ และสถานที่ต้องมีอยู่จริง', () => {
-    const s = start(4, 16);
+  it('คนที่ไม่ใช่สายลับทายไม่ได้ และสถานที่ต้องมีอยู่จริง', () => {
+    const s = voteOut(start(4, 16), 'p-bob');
     expect(tryAct(s, agents(s)[0] as string, { type: 'SPY_GUESS', locationId: s.locationId })).toBe(
       SpyfallError.NotSpy,
     );
@@ -356,14 +212,89 @@ describe('สายลับเดาสถานที่', () => {
       SpyfallError.UnknownLocation,
     );
   });
+
+  it('โหวตถูก + สายลับทายถูก = สายลับชนะ', () => {
+    let s = voteOut(start(4, 20), start(4, 20).spy);
+    s = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
+    expect(s.result).toEqual({ winner: 'spy', winners: [s.spy], reason: 'caught-spy-guessed' });
+    expect(s.spyGuess).toBe(s.locationId);
+    expect(s.scores[s.spy]).toBe(1);
+  });
+
+  it('โหวตถูก + สายลับทายผิด = เฉพาะคนที่โหวตถูกชนะ', () => {
+    const s0 = start(5, 21);
+    const [a, b, c, d] = agents(s0) as [string, string, string, string];
+    // a, b, c โหวตสายลับ / d โหวต a / สายลับโหวต a
+    const pick: Record<string, string> = {
+      [a]: s0.spy,
+      [b]: s0.spy,
+      [c]: s0.spy,
+      [d]: a,
+      [s0.spy]: a,
+    };
+    let s = voteAll(startVote(s0), (p) => pick[p] as string);
+    expect(s.accused).toBe(s0.spy);
+    s = act(s, s.spy, { type: 'SPY_GUESS', locationId: wrongLocation(s) });
+    expect(s.result?.winner).toBe('voters');
+    expect(s.result?.reason).toBe('caught');
+    expect(s.result?.winners.sort()).toEqual([a, b, c].sort());
+    expect([a, b, c, d, s.spy].map((p) => s.scores[p])).toEqual([1, 1, 1, 0, 0]);
+  });
+
+  it('โหวตผิด + สายลับทายถูก = สายลับชนะ', () => {
+    const s0 = start(4, 22);
+    let s = voteOut(s0, agents(s0)[0] as string);
+    s = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
+    expect(s.result).toEqual({ winner: 'spy', winners: [s.spy], reason: 'missed-spy-guessed' });
+  });
+
+  it('โหวตผิด + สายลับทายผิด = ไม่มีใครชนะ', () => {
+    const s0 = start(4, 23);
+    let s = voteOut(s0, agents(s0)[0] as string);
+    s = act(s, s.spy, { type: 'SPY_GUESS', locationId: wrongLocation(s) });
+    expect(s.result).toEqual({ winner: null, winners: [], reason: 'missed' });
+    expect(Object.values(s.scores).every((n) => n === 0)).toBe(true);
+  });
+
+  it('สายลับไม่ทายภายในเวลา = ทายผิด', () => {
+    const s0 = start(4, 24);
+    const s = timeUp(voteOut(s0, s0.spy, T0 + 1_000));
+    expect(s.spyGuess).toBeNull();
+    expect(s.result?.reason).toBe('caught');
+    expect(s.result?.winners.sort()).toEqual(agents(s0).sort());
+  });
+
+  it('จับได้ในรอบโหวตใหม่ = คนที่โหวตถูกนับจากรอบที่ตัดสิน', () => {
+    const s0 = start(4, 4);
+    const [a, b, c] = agents(s0) as [string, string, string];
+    // รอบแรก: a กับสายลับเสมอ
+    let s = voteAll(
+      startVote(s0),
+      (p) => ({ [a]: s0.spy, [b]: a, [c]: s0.spy, [s0.spy]: a })[p] as string,
+    );
+    expect(s.phase).toBe('voting');
+    // รอบสอง: a, b, c เลือกสายลับ (a เปลี่ยนใจไม่ได้ เพราะเลือกตัวเองไม่ได้ จึงเลือกสายลับ)
+    s = voteAll(s, (p) => (p === s0.spy ? a : s0.spy));
+    expect(s.accused).toBe(s0.spy);
+    s = act(s, s0.spy, { type: 'SPY_GUESS', locationId: wrongLocation(s) });
+    expect(s.result?.winners.sort()).toEqual([a, b, c].sort());
+  });
 });
 
 describe('action ผิดคนหรือผิด phase ถูกปฏิเสธ', () => {
   const s = start(4, 17);
-  const revealed = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
+  const s0 = start(4, 17);
+  const guessing = voteOut(s0, s0.spy);
+  const revealed = act(guessing, s0.spy, { type: 'SPY_GUESS', locationId: s0.locationId });
 
   it.each([
-    ['BALLOT ตอนไม่มีโหวต', s, 'p-bob', { type: 'BALLOT', agree: true }, SpyfallError.WrongPhase],
+    [
+      'VOTE ตอนยังไม่เริ่มโหวต',
+      s,
+      'p-bob',
+      { type: 'VOTE', target: 'p-cat' },
+      SpyfallError.WrongPhase,
+    ],
     ['NEXT_ROUND ก่อน reveal', s, HOST, { type: 'NEXT_ROUND' }, SpyfallError.WrongPhase],
     [
       'NEXT_ROUND โดยคนที่ไม่ใช่ host',
@@ -373,86 +304,88 @@ describe('action ผิดคนหรือผิด phase ถูกปฏิ�
       SpyfallError.NotHost,
     ],
     [
-      'ACCUSE หลัง reveal',
+      'VOTE หลัง reveal',
       revealed,
       'p-bob',
-      { type: 'ACCUSE', target: 'p-cat' },
+      { type: 'VOTE', target: 'p-cat' },
       SpyfallError.WrongPhase,
     ],
+    ['START_VOTE ตอนสายลับทาย', guessing, HOST, { type: 'START_VOTE' }, SpyfallError.WrongPhase],
+    ['คนนอกรอบส่ง action', s, 'p-zed', { type: 'START_VOTE' }, SpyfallError.NotAPlayer],
+    ['payload ผิดรูป', s, 'p-bob', { type: 'VOTE' }, 'invalid-action'],
     [
-      'คนนอกรอบส่ง action',
+      'action แบบเก่า (กล่าวหา) ใช้ไม่ได้แล้ว',
       s,
-      'p-zed',
-      { type: 'ACCUSE', target: 'p-bob' },
-      SpyfallError.NotAPlayer,
+      'p-bob',
+      { type: 'ACCUSE', target: 'p-cat' },
+      'invalid-action',
     ],
-    ['payload ผิดรูป', s, 'p-bob', { type: 'ACCUSE' }, 'invalid-action'],
-    ['action ที่ไม่มีจริง', s, 'p-bob', { type: 'START_ROUND' }, 'invalid-action'],
   ])('%s', (_name, state, by, action, error) => {
     expect(tryAct(state, by, action)).toBe(error);
   });
 
-  it('host เริ่มรอบใหม่ได้: สุ่มใหม่ เปลี่ยนสถานที่ และเก็บคะแนน', () => {
+  it('host เริ่มรอบใหม่ได้: สุ่มใหม่ เปลี่ยนสถานที่ เก็บคะแนน และล้างผลโหวต', () => {
     const next = act(revealed, HOST, { type: 'NEXT_ROUND' }, T0 + 5_000, 99);
     expect(next.phase).toBe('questioning');
     expect(next.locationId).not.toBe(revealed.locationId);
     expect(next.scores).toEqual(revealed.scores);
     expect(next.deadline).toBe(T0 + 5_000 + DEFAULT_DURATION_MS);
     expect(next.result).toBeNull();
+    expect(next.voteRounds).toEqual([]);
+    expect(next.accused).toBeNull();
   });
 });
 
 describe('ผู้เล่นออกกลางเกม', () => {
-  it('สายลับออก = ฝ่ายผู้เล่นชนะ', () => {
+  it('สายลับออก = ทุกคนที่เหลือชนะ', () => {
     const s = start(4, 18);
     const after = removePlayer(spyfall, s, s.spy, T0);
-    expect(after.result).toEqual({ winner: 'agents', reason: 'spy-left' });
+    expect(after.result).toEqual({ winner: 'voters', winners: agents(s), reason: 'spy-left' });
     expect(after.players).not.toContain(s.spy);
   });
 
   it('เหลือน้อยกว่า 3 คน = จบโดยไม่มีผู้ชนะ และ isOver', () => {
     const s = start(3, 19);
     const after = removePlayer(spyfall, s, agents(s)[0] as string, T0);
-    expect(after.result).toEqual({ winner: null, reason: 'not-enough-players' });
+    expect(after.result).toEqual({ winner: null, winners: [], reason: 'not-enough-players' });
     expect(spyfall.isOver(after)).toBe(true);
     expect(tryAct(after, HOST, { type: 'NEXT_ROUND' })).toBe('game-over');
   });
 
-  it('ผู้ถูกกล่าวหาออก = ยกเลิกโหวตและเดินเวลาต่อ', () => {
-    let s = start(5, 20);
-    const [a, b] = agents(s) as [string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b }, T0 + 10_000);
-    s = removePlayer(spyfall, s, b, T0 + 20_000);
-    expect(s.phase).toBe('questioning');
-    expect(s.deadline).toBe(T0 + 20_000 + DEFAULT_DURATION_MS - 10_000);
-  });
-
-  it('คนที่ยังไม่โหวตออก = ตัดสินโหวตใหม่จากคนที่เหลือ', () => {
-    let s = start(5, 21);
-    const [a, b, c, d] = agents(s) as [string, string, string, string];
-    s = act(s, a, { type: 'ACCUSE', target: s.spy });
-    s = act(s, b, { type: 'BALLOT', agree: true });
-    s = act(s, c, { type: 'BALLOT', agree: true });
-    expect(s.phase).toBe('voting');
+  it('คนที่ยังไม่โหวตออก = ปิดรอบถ้าที่เหลือโหวตครบ และไม่นับเสียงที่ให้คนที่ออก', () => {
+    const s0 = start(5, 21);
+    const [a, b, c, d] = agents(s0) as [string, string, string, string];
+    let s = startVote(s0);
+    // ทุกคนยกเว้น d โหวตแล้ว: a ได้ 2 (จาก b, สายลับ) d ได้ 2 (จาก a, c)
+    s = act(s, a, { type: 'VOTE', target: d });
+    s = act(s, c, { type: 'VOTE', target: d });
+    s = act(s, b, { type: 'VOTE', target: a });
+    s = act(s, s0.spy, { type: 'VOTE', target: a });
     s = removePlayer(spyfall, s, d, T0);
-    expect(s.result).toEqual({ winner: 'agents', reason: 'spy-caught' });
-  });
-
-  it('คนที่ยังไม่ใช้สิทธิ์ใน final-vote ออก = เช็กว่าครบหรือยัง', () => {
-    let s = timeUp(start(4, 22));
-    const [a, b, c] = agents(s) as [string, string, string];
-    for (const p of [s.spy, a, b]) s = act(s, p, { type: 'PASS' });
-    s = removePlayer(spyfall, s, c, T0);
-    expect(s.result).toEqual({ winner: 'spy', reason: 'spy-survived' });
+    expect(s.phase).toBe('guessing');
+    expect(s.accused).toBe(a);
   });
 
   it('ออกตอน reveal แค่ลบออกจากรายชื่อ', () => {
-    let s = start(4, 23);
-    s = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
+    const s0 = start(4, 23);
+    const s = act(voteOut(s0, s0.spy), s0.spy, { type: 'SPY_GUESS', locationId: s0.locationId });
     const quitter = agents(s)[0] as string;
     const after = removePlayer(spyfall, s, quitter, T0);
     expect(after.players).not.toContain(quitter);
     expect(after.result).toEqual(s.result);
+  });
+});
+
+describe('ห้องที่เล่นค้างจากกติกาเก่า', () => {
+  it('phase เก่าไม่ทำให้พัง: deadline ถูกล้าง และ view ยังสร้างได้', () => {
+    const old = {
+      ...start(4),
+      phase: 'final-vote',
+      voteRounds: undefined,
+    } as unknown as SpyfallState;
+    const next = fireDeadline(spyfall, old, T0 + DEFAULT_DURATION_MS);
+    expect(next.deadline).toBeNull();
+    expect(spyfall.playerView(next, 'p-bob').voteRounds).toEqual([]);
   });
 });
 
@@ -461,9 +394,7 @@ describe('seeded rng', () => {
     const trail: SpyfallState[] = [];
     let s = start(6, seed);
     trail.push(s);
-    const [a, b] = agents(s) as [string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b }, T0 + 1_000);
-    s = voteAll(s, false, T0 + 2_000);
+    s = voteOut(s, agents(s)[0] as string, T0 + 1_000);
     trail.push(s);
     s = act(s, s.spy, { type: 'SPY_GUESS', locationId: wrongLocation(s) }, T0 + 3_000);
     s = act(s, HOST, { type: 'NEXT_ROUND' }, T0 + 4_000, seed);

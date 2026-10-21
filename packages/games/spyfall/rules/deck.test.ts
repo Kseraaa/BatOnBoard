@@ -7,7 +7,7 @@ import {
   SpyfallError,
 } from './constants';
 import { buildDeck, customRoleId } from './deck';
-import { act, agents, HOST, spyfall, start, testLocations, tryAct } from './fixtures';
+import { act, agents, HOST, spyfall, start, testLocations, tryAct, voteOut } from './fixtures';
 import type { CustomLocation, SpyfallOptions } from './types';
 
 const allIds = testLocations.map((l) => l.id);
@@ -140,7 +140,8 @@ describe('เล่นด้วยกองสถานที่จากตั�
   });
 
   it('สายลับเดาได้เฉพาะสถานที่ในกอง', () => {
-    const s = start(4, 1, options({ disabled: ['loc-zeppelin'] }));
+    const s0 = start(4, 1, options({ disabled: ['loc-zeppelin'] }));
+    const s = voteOut(s0, s0.spy);
     const guess = (locationId: string) => tryAct(s, s.spy, { type: 'SPY_GUESS', locationId });
     expect(guess('loc-zeppelin')).toBe(SpyfallError.UnknownLocation);
     expect(guess('custom-1')).toBe(SpyfallError.UnknownLocation);
@@ -149,7 +150,7 @@ describe('เล่นด้วยกองสถานที่จากตั�
 
   it('รอบถัดไปใช้กองเดิม', () => {
     let s = start(4, 2, customOnly);
-    s = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
+    s = act(voteOut(s, s.spy), s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
     const next = act(s, HOST, { type: 'NEXT_ROUND' }, undefined, 7);
     expect(next.deck).toEqual(s.deck);
     expect(['custom-1', 'custom-2']).toContain(next.locationId);

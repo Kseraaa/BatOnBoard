@@ -94,15 +94,35 @@ export async function rolesOf(players: Player[]) {
   return roles;
 }
 
-/** กดกล่าวหา target จากรายชื่อผู้เล่น แล้วยืนยัน */
-export async function accuse(page: Page, target: string) {
-  await page
-    .getByRole('listitem')
-    .filter({ hasText: target })
-    .getByRole('button', { name: m.accuse, exact: true })
-    .click();
-  await expect(page.getByText(m.confirmAccuse(target))).toBeVisible();
+/** host กดเริ่มโหวตแล้วยืนยัน */
+export async function startVoting(host: Page) {
+  await host.getByRole('button', { name: m.startVote.button, exact: true }).click();
+  await expect(host.getByText(m.startVote.confirm)).toBeVisible();
+  await host.getByRole('button', { name: m.confirm, exact: true }).click();
+}
+
+/** โหวตว่า target คือสายลับ แล้วยืนยัน */
+export async function vote(page: Page, target: string) {
+  await page.getByTestId('vote-panel').getByRole('button').filter({ hasText: target }).click();
+  await expect(page.getByText(m.vote.confirm(target))).toBeVisible();
   await page.getByRole('button', { name: m.confirm, exact: true }).click();
+  // คนโหวตคนสุดท้ายจะไม่เห็น "โหวตแล้ว" เพราะรอบปิดทันที (เห็นผลโหวตแทน)
+  await expect(
+    page.getByText(m.vote.voted(target)).or(page.getByTestId('vote-results')),
+  ).toBeVisible();
+}
+
+/** สายลับทายสถานที่แล้วยืนยัน */
+export async function guess(spy: Page, location: string) {
+  await spy.getByTestId('spy-guess').getByRole('button', { name: location, exact: true }).click();
+  await expect(spy.getByText(m.guess.confirm(location))).toBeVisible();
+  await spy.getByRole('button', { name: m.confirm, exact: true }).click();
+}
+
+/** ชื่อสถานที่อื่นในกองที่ไม่ใช่ location (ไว้ให้สายลับทายผิด) */
+export async function otherLocation(spy: Page, location: string): Promise<string> {
+  const names = await spy.getByTestId('spy-guess').getByRole('button').allTextContents();
+  return names.find((n) => n.trim() && n !== location) as string;
 }
 
 export async function closeAll(players: Player[]) {

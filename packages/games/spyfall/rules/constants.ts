@@ -4,10 +4,10 @@ export const MAX_PLAYERS = 8;
 export const DEFAULT_DURATION_MS = 8 * 60_000;
 export const MIN_DURATION_MS = 60_000;
 export const MAX_DURATION_MS = 30 * 60_000;
-/** เวลาโหวตแต่ละครั้ง — กันคนออฟไลน์ทำให้โหวตค้าง */
+/** เวลาโหวตแต่ละรอบ — กันคนออฟไลน์ทำให้โหวตค้าง (ไม่โหวต = งดออกเสียง) */
 export const VOTE_MS = 60_000;
-/** เวลาของ phase final-vote — กันคนออฟไลน์ไม่ยอมเสนอชื่อหรือ PASS */
-export const FINAL_VOTE_MS = 90_000;
+/** เวลาที่สายลับมีให้ทายสถานที่ — ไม่ทันถือว่าทายผิด */
+export const GUESS_MS = 60_000;
 
 /** สถานที่ที่ผู้เล่นสร้างเอง (อยู่ใน options ของห้อง) */
 export const MAX_CUSTOM_LOCATIONS = 20;
@@ -29,11 +29,8 @@ export const MIN_DECK_SIZE = 2;
 export const SpyfallError = {
   NotAPlayer: 'not-a-player',
   WrongPhase: 'wrong-phase',
-  UnknownPlayer: 'unknown-player',
-  CannotAccuseSelf: 'cannot-accuse-self',
-  AccusationUsed: 'accusation-used',
-  FinalTurnUsed: 'final-turn-used',
-  AccusedCannotVote: 'accused-cannot-vote',
+  NotACandidate: 'not-a-candidate',
+  CannotVoteSelf: 'cannot-vote-self',
   AlreadyVoted: 'already-voted',
   NotSpy: 'not-spy',
   UnknownLocation: 'unknown-location',

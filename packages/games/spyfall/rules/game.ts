@@ -8,13 +8,13 @@ import type {
   SpyfallResult,
   SpyfallState,
   SpyfallView,
-  VoteResult,
+  VoteRound,
   WinReason,
 } from './types';
 import {
   CUSTOM_ID_PATTERN,
   DEFAULT_DURATION_MS,
-  FINAL_VOTE_MS,
+  GUESS_MS,
   MAX_CUSTOM_LOCATIONS,
   MAX_CUSTOM_ROLES,
   MAX_CUSTOM_TEXT,
@@ -31,9 +31,8 @@ import { buildDeck } from './deck';
 const idSchema = z.string().min(1).max(64);
 
 const actionSchema: z.ZodType<SpyfallAction> = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('ACCUSE'), target: idSchema }),
-  z.object({ type: z.literal('BALLOT'), agree: z.boolean() }),
-  z.object({ type: z.literal('PASS') }),
+  z.object({ type: z.literal('START_VOTE') }),
+  z.object({ type: z.literal('VOTE'), target: idSchema }),
   z.object({ type: z.literal('SPY_GUESS'), locationId: idSchema }),
   z.object({ type: z.literal('NEXT_ROUND') }),
 ]);
@@ -117,11 +116,9 @@ function deal(
     firstAsker: players[rng.int(players.length)] as PlayerId,
     durationMs,
     deadline: now + durationMs,
-    pausedRemaining: null,
-    usedAccusation: [],
-    finalTurns: [],
-    vote: null,
-    lastVote: null,
+    voting: null,
+    voteRounds: [],
+    accused: null,
     spyGuess: null,
     result: null,
     scores: Object.fromEntries(players.map((p) => [p, scores[p] ?? 0])),
@@ -131,74 +128,91 @@ function deal(
 function endRound(
   state: SpyfallState,
   winner: SpyfallResult['winner'],
+  winners: PlayerId[],
   reason: WinReason,
-  lastVote: VoteResult | null = null,
 ): SpyfallState {
-  const winners =
-    winner === null ? [] : state.players.filter((p) => (p === state.spy) === (winner === 'spy'));
   const scores = { ...state.scores };
   for (const p of winners) scores[p] = (scores[p] ?? 0) + 1;
-
   return {
     ...state,
     phase: 'reveal',
     deadline: null,
-    pausedRemaining: null,
-    vote: null,
-    lastVote,
-    result: { winner, reason },
+    voting: null,
+    result: { winner, winners, reason },
     scores,
   };
 }
 
-/** final-vote จบเมื่อทุกคนใช้สิทธิ์ครบแล้วไม่มีใครถูกจับ */
-function checkFinalVoteDone(state: SpyfallState): SpyfallState {
-  if (state.phase === 'final-vote' && state.players.every((p) => state.finalTurns.includes(p))) {
-    return endRound(state, 'spy', 'spy-survived');
-  }
-  return state;
-}
-
-/** สรุปโหวตที่กำลังตัดสินเป็นข้อมูลสาธารณะ */
-function voteResult(state: SpyfallState, passed: boolean): VoteResult | null {
-  const vote = state.vote;
-  if (vote === null) return null;
-  const voters = state.players.filter((p) => p !== vote.accused);
+/** เปิดโหวตรอบใหม่ — รอบแรกเลือกได้ทุกคน รอบสองเฉพาะคนที่คะแนนเสมอ */
+function openVoting(state: SpyfallState, candidates: PlayerId[], now: number): SpyfallState {
   return {
-    accuser: vote.accuser,
-    accused: vote.accused,
-    final: vote.final,
-    ballots: Object.fromEntries(voters.map((p) => [p, vote.ballots[p] ?? null])),
-    passed,
+    ...state,
+    phase: 'voting',
+    deadline: now + VOTE_MS,
+    voting: { candidates, ballots: {} },
   };
 }
 
-/** โหวตไม่ผ่าน: กลับ phase เดิมและเดินเวลาต่อจากที่เหลือ */
-function failVote(state: SpyfallState, now: number): SpyfallState {
-  const final = state.vote?.final ?? false;
-  return checkFinalVoteDone({
-    ...state,
-    phase: final ? 'final-vote' : 'questioning',
-    vote: null,
-    lastVote: voteResult(state, false),
-    deadline: now + (state.pausedRemaining ?? 0),
-    pausedRemaining: null,
-  });
+/** นับคะแนนเฉพาะบัตรของคนที่ยังอยู่ และเฉพาะผู้สมัครที่ยังอยู่ */
+function tally(state: SpyfallState, round: VoteRound): Map<PlayerId, number> {
+  const counts = new Map(
+    round.candidates.filter((c) => state.players.includes(c)).map((c) => [c, 0]),
+  );
+  for (const p of state.players) {
+    const target = round.ballots[p];
+    if (target != null && counts.has(target)) counts.set(target, (counts.get(target) ?? 0) + 1);
+  }
+  return counts;
 }
 
-/** ตัดสินโหวตทันทีที่รู้ผล: มีคนไม่เห็นด้วย = ไม่ผ่าน, ทุกคนยกเว้นผู้ถูกกล่าวหาเห็นด้วย = ผ่าน */
-function resolveVote(state: SpyfallState, now: number): SpyfallState {
-  const vote = state.vote;
-  if (state.phase !== 'voting' || vote === null) return state;
-  const voters = state.players.filter((p) => p !== vote.accused);
-  if (voters.some((p) => vote.ballots[p] === false)) return failVote(state, now);
-  if (voters.every((p) => vote.ballots[p] === true)) {
-    const result = voteResult(state, true);
-    return vote.accused === state.spy
-      ? endRound(state, 'agents', 'spy-caught', result)
-      : endRound(state, 'spy', 'innocent-convicted', result);
+/**
+ * ปิดรอบโหวต: ทุกคนโหวตครบ หรือ force (หมดเวลา — คนที่ไม่โหวตถือว่างดออกเสียง)
+ * คะแนนสูงสุดคนเดียว = ถูกเลือก, เสมอรอบแรก = โหวตใหม่เฉพาะคนที่เสมอ, เสมอรอบสอง = ไม่มีใครถูกเลือก
+ */
+function closeVoting(state: SpyfallState, now: number, force: boolean): SpyfallState {
+  const voting = state.voting ?? { candidates: state.players, ballots: {} };
+  if (!force && !state.players.every((p) => p in voting.ballots)) return state;
+
+  const round: VoteRound = {
+    candidates: voting.candidates,
+    ballots: Object.fromEntries(state.players.map((p) => [p, voting.ballots[p] ?? null])),
+  };
+  const counts = tally(state, round);
+  const top = Math.max(0, ...counts.values());
+  const leaders = [...counts].filter(([, n]) => n === top && n > 0).map(([c]) => c);
+  // ห้องที่เริ่มก่อนเปลี่ยนกติกาไม่มี voteRounds
+  const previous = state.voteRounds ?? [];
+  const closed = { ...state, voteRounds: [...previous, round], voting: null };
+
+  if (leaders.length > 1 && previous.length === 0) {
+    return openVoting(closed, leaders, now);
   }
-  return state;
+  return {
+    ...closed,
+    phase: 'guessing',
+    deadline: now + GUESS_MS,
+    accused: leaders.length === 1 ? (leaders[0] as PlayerId) : null,
+  };
+}
+
+/** สายลับทายแล้ว (หรือหมดเวลา = null) → ตัดสินผล */
+function finishGuess(state: SpyfallState, guess: string | null): SpyfallState {
+  const guessed = { ...state, spyGuess: guess };
+  const correct = guess === state.locationId;
+  const caught = state.accused === state.spy;
+  if (correct) {
+    return endRound(
+      guessed,
+      'spy',
+      [state.spy],
+      caught ? 'caught-spy-guessed' : 'missed-spy-guessed',
+    );
+  }
+  if (!caught) return endRound(guessed, null, [], 'missed');
+  // คนที่โหวตถูก = เลือกสายลับในรอบโหวตที่ตัดสินผล
+  const deciding = state.voteRounds.at(-1);
+  const voters = state.players.filter((p) => deciding?.ballots[p] === state.spy);
+  return endRound(guessed, 'voters', voters, 'caught');
 }
 
 export function createSpyfall(
@@ -223,30 +237,22 @@ export function createSpyfall(
       if (!state.players.includes(by)) return SpyfallError.NotAPlayer;
 
       switch (action.type) {
-        case 'ACCUSE': {
-          if (state.phase === 'questioning') {
-            if (state.usedAccusation.includes(by)) return SpyfallError.AccusationUsed;
-          } else if (state.phase === 'final-vote') {
-            if (state.finalTurns.includes(by)) return SpyfallError.FinalTurnUsed;
-          } else {
-            return SpyfallError.WrongPhase;
-          }
-          if (action.target === by) return SpyfallError.CannotAccuseSelf;
-          if (!state.players.includes(action.target)) return SpyfallError.UnknownPlayer;
-          return null;
-        }
-        case 'BALLOT':
-          if (state.phase !== 'voting' || state.vote === null) return SpyfallError.WrongPhase;
-          if (by === state.vote.accused) return SpyfallError.AccusedCannotVote;
-          if (by in state.vote.ballots) return SpyfallError.AlreadyVoted;
-          return null;
-        case 'PASS':
-          if (state.phase !== 'final-vote') return SpyfallError.WrongPhase;
-          if (state.finalTurns.includes(by)) return SpyfallError.FinalTurnUsed;
-          return null;
-        case 'SPY_GUESS':
-          // final-vote ถือเป็นช่วงโหวต สายลับเดาไม่ได้
+        case 'START_VOTE':
           if (state.phase !== 'questioning') return SpyfallError.WrongPhase;
+          if (by !== ctx.hostId) return SpyfallError.NotHost;
+          return null;
+        case 'VOTE': {
+          if (state.phase !== 'voting' || state.voting === null) return SpyfallError.WrongPhase;
+          if (by in state.voting.ballots) return SpyfallError.AlreadyVoted;
+          if (action.target === by) return SpyfallError.CannotVoteSelf;
+          const ok =
+            state.voting.candidates.includes(action.target) &&
+            state.players.includes(action.target);
+          return ok ? null : SpyfallError.NotACandidate;
+        }
+        case 'SPY_GUESS':
+          // ทายได้ช่วงเดียว: หลังโหวตเสร็จ — ห้ามเปิดตัวก่อน
+          if (state.phase !== 'guessing') return SpyfallError.WrongPhase;
           if (by !== state.spy) return SpyfallError.NotSpy;
           if (!state.deck.some((l) => l.id === action.locationId)) {
             return SpyfallError.UnknownLocation;
@@ -262,43 +268,22 @@ export function createSpyfall(
 
     apply(state, action, by, now, rng) {
       switch (action.type) {
-        case 'ACCUSE': {
-          const final = state.phase === 'final-vote';
-          return resolveVote(
+        case 'START_VOTE':
+          return openVoting(state, state.players, now);
+        case 'VOTE': {
+          const voting = state.voting;
+          if (voting === null) return state;
+          return closeVoting(
             {
               ...state,
-              phase: 'voting',
-              usedAccusation: final ? state.usedAccusation : [...state.usedAccusation, by],
-              finalTurns: final ? [...state.finalTurns, by] : state.finalTurns,
-              pausedRemaining: Math.max(0, (state.deadline ?? now) - now),
-              deadline: null,
-              vote: {
-                accuser: by,
-                accused: action.target,
-                ballots: { [by]: true },
-                deadline: now + VOTE_MS,
-                final,
-              },
+              voting: { ...voting, ballots: { ...voting.ballots, [by]: action.target } },
             },
             now,
+            false,
           );
         }
-        case 'BALLOT': {
-          const vote = state.vote;
-          if (vote === null) return state;
-          return resolveVote(
-            { ...state, vote: { ...vote, ballots: { ...vote.ballots, [by]: action.agree } } },
-            now,
-          );
-        }
-        case 'PASS':
-          return checkFinalVoteDone({ ...state, finalTurns: [...state.finalTurns, by] });
-        case 'SPY_GUESS': {
-          const guessed = { ...state, spyGuess: action.locationId };
-          return action.locationId === state.locationId
-            ? endRound(guessed, 'spy', 'spy-guessed')
-            : endRound(guessed, 'agents', 'spy-guessed-wrong');
-        }
+        case 'SPY_GUESS':
+          return finishGuess(state, action.locationId);
         case 'NEXT_ROUND':
           return deal(
             state.players,
@@ -315,6 +300,7 @@ export function createSpyfall(
     playerView(state, viewer): SpyfallView {
       const revealed = state.phase === 'reveal';
       const role = state.roles[viewer];
+      const voting = state.voting;
       return {
         phase: state.phase,
         me: viewer,
@@ -328,16 +314,17 @@ export function createSpyfall(
         players: state.players,
         firstAsker: state.firstAsker,
         deadline: state.deadline,
-        pausedRemaining: state.pausedRemaining,
-        usedAccusation: state.usedAccusation,
-        finalTurns: state.finalTurns,
-        vote: state.vote && {
-          accuser: state.vote.accuser,
-          accused: state.vote.accused,
-          voted: Object.keys(state.vote.ballots).filter((p) => state.players.includes(p)),
-          deadline: state.vote.deadline,
-        },
-        lastVote: state.lastVote,
+        vote: voting
+          ? {
+              // ห้องที่เริ่มก่อนเปลี่ยนกติกาไม่มี voteRounds
+              round: (state.voteRounds?.length ?? 0) + 1,
+              candidates: voting.candidates,
+              voted: Object.keys(voting.ballots).filter((p) => state.players.includes(p)),
+              myVote: voting.ballots[viewer] ?? null,
+            }
+          : null,
+        voteRounds: state.voteRounds ?? [],
+        accused: state.accused ?? null,
         result: state.result,
         reveal: revealed
           ? {
@@ -351,42 +338,37 @@ export function createSpyfall(
       };
     },
 
-    nextDeadline(state) {
-      if (state.phase === 'voting') return state.vote?.deadline ?? null;
-      return state.deadline;
-    },
+    nextDeadline: (state) => state.deadline,
 
     onDeadline(state, now) {
       switch (state.phase) {
-        case 'voting':
-          // คนที่ยังไม่โหวต = ไม่เห็นด้วย
-          return failVote(state, now);
         case 'questioning':
-          return {
-            ...state,
-            phase: 'final-vote',
-            deadline: now + FINAL_VOTE_MS,
-            finalTurns: [],
-          };
-        case 'final-vote':
-          return endRound(state, 'spy', 'time-up');
-        case 'reveal':
-          return state;
+          return openVoting(state, state.players, now);
+        case 'voting':
+          return closeVoting(state, now, true);
+        case 'guessing':
+          return finishGuess(state, null);
+        default:
+          // reveal หรือ phase จากกติกาเก่า (ห้องที่เล่นค้างก่อน deploy) — ไม่ทำอะไร
+          return { ...state, deadline: null };
       }
     },
 
     onPlayerLeave(state, player, now) {
       if (!state.players.includes(player)) return state;
-      const left: SpyfallState = {
-        ...state,
-        players: state.players.filter((p) => p !== player),
-      };
+      const players = state.players.filter((p) => p !== player);
+      const left: SpyfallState = { ...state, players };
       if (state.phase === 'reveal') return left;
-      if (player === state.spy) return endRound(left, 'agents', 'spy-left');
-      if (left.players.length < MIN_PLAYERS) return endRound(left, null, 'not-enough-players');
-      if (state.phase === 'voting' && state.vote?.accused === player) return failVote(left, now);
-      if (state.phase === 'voting') return resolveVote(left, now);
-      return checkFinalVoteDone(left);
+      if (player === state.spy) return endRound(left, 'voters', players, 'spy-left');
+      if (players.length < MIN_PLAYERS) return endRound(left, null, [], 'not-enough-players');
+      if (state.phase === 'voting' && state.voting) {
+        // บัตรของคนที่ออกไม่นับ คะแนนที่ให้คนที่ออกก็ไม่นับ (tally กรองให้)
+        const ballots = Object.fromEntries(
+          Object.entries(state.voting.ballots).filter(([p]) => p !== player),
+        );
+        return closeVoting({ ...left, voting: { ...state.voting, ballots } }, now, false);
+      }
+      return left;
     },
 
     // reveal ยังรับ NEXT_ROUND ได้ — จบจริงเมื่อคนไม่พอเล่นรอบต่อ

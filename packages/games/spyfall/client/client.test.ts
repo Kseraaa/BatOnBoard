@@ -1,61 +1,63 @@
 import { describe, expect, it } from 'vitest';
 import { SpyfallError } from '../rules/constants';
-import { act, agents, spyfall, start, timeUp } from '../rules/fixtures';
+import { act, agents, HOST, spyfall, start, startVote, voteAll, voteOut } from '../rules/fixtures';
 import type { SpyfallState } from '../rules/types';
-import { canAccuse, canBallot, canGuess, canPass, voterCount } from './logic';
+import { canGuess, canStartVote, canVote, tally, voteTargets } from './logic';
 import { GAME_DESCRIPTION, GAME_DISPLAY_NAME, spyfallMessages } from './messages';
 
 const viewOf = (s: SpyfallState, p: string) => spyfall.playerView(s, p);
 
 describe('ปุ่มที่แสดง (logic)', () => {
-  it('ช่วงถามตอบ: กล่าวหาได้จนกว่าจะใช้สิทธิ์ และเฉพาะสายลับที่เดาได้', () => {
-    let s = start(4, 1);
-    const [a, b] = agents(s) as [string, string];
-    expect(canAccuse(viewOf(s, a))).toBe(true);
-    expect(canGuess(viewOf(s, s.spy))).toBe(true);
-    expect(canGuess(viewOf(s, a))).toBe(false);
-
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    for (const p of s.players.filter((p) => p !== a && p !== b)) {
-      s = act(s, p, { type: 'BALLOT', agree: false });
-      break;
-    }
-    expect(s.phase).toBe('questioning');
-    expect(canAccuse(viewOf(s, a))).toBe(false);
-    expect(canAccuse(viewOf(s, b))).toBe(true);
-  });
-
-  it('ช่วงโหวต: ผู้ถูกกล่าวหาและคนที่โหวตแล้วไม่เห็นปุ่มโหวต', () => {
-    let s = start(5, 2);
-    const [a, b, c] = agents(s) as [string, string, string];
-    s = act(s, a, { type: 'ACCUSE', target: b });
-    expect(canBallot(viewOf(s, a))).toBe(false); // ผู้กล่าวหานับเป็นเห็นด้วยแล้ว
-    expect(canBallot(viewOf(s, b))).toBe(false);
-    expect(canBallot(viewOf(s, c))).toBe(true);
+  it('ช่วงถามตอบ: เฉพาะ host เริ่มโหวตได้ และสายลับยังทายไม่ได้', () => {
+    const s = start(4, 1);
+    expect(canStartVote(viewOf(s, HOST), HOST)).toBe(true);
+    expect(canStartVote(viewOf(s, 'p-bob'), HOST)).toBe(false);
     expect(canGuess(viewOf(s, s.spy))).toBe(false);
-    expect(voterCount(viewOf(s, c))).toBe(4);
-    s = act(s, c, { type: 'BALLOT', agree: true });
-    expect(canBallot(viewOf(s, c))).toBe(false);
+    expect(canVote(viewOf(s, 'p-bob'))).toBe(false);
   });
 
-  it('final-vote: เสนอชื่อหรือผ่านได้คนละครั้ง', () => {
-    let s = timeUp(start(4, 3));
-    const [a] = agents(s) as [string];
-    expect(canAccuse(viewOf(s, a))).toBe(true);
-    expect(canPass(viewOf(s, a))).toBe(true);
-    s = act(s, a, { type: 'PASS' });
-    expect(canAccuse(viewOf(s, a))).toBe(false);
-    expect(canPass(viewOf(s, a))).toBe(false);
+  it('ช่วงโหวต: เลือกได้ทุกคนยกเว้นตัวเอง และโหวตแล้วปุ่มหาย', () => {
+    let s = startVote(start(4, 1));
+    expect(voteTargets(viewOf(s, 'p-bob'))).toEqual(['p-ann', 'p-cat', 'p-dan']);
+    expect(canVote(viewOf(s, 'p-bob'))).toBe(true);
+    s = act(s, 'p-bob', { type: 'VOTE', target: 'p-cat' });
+    expect(canVote(viewOf(s, 'p-bob'))).toBe(false);
+    expect(canVote(viewOf(s, 'p-cat'))).toBe(true);
+  });
+
+  it('โหวตรอบใหม่: ผู้สมัครที่เสมอเลือกได้แค่อีกคน', () => {
+    const s0 = start(4, 4);
+    const [a, b, c] = agents(s0) as [string, string, string];
+    const s = voteAll(startVote(s0), (p) => ({ [a]: b, [b]: a, [c]: a, [s0.spy]: b })[p] as string);
+    expect(voteTargets(viewOf(s, a))).toEqual([b]);
+    expect(voteTargets(viewOf(s, c)).sort()).toEqual([a, b].sort());
+  });
+
+  it('ช่วงสายลับทาย: เฉพาะสายลับเห็นปุ่มทาย', () => {
+    const s0 = start(4, 2);
+    const s = voteOut(s0, s0.spy);
+    expect(canGuess(viewOf(s, s0.spy))).toBe(true);
+    expect(canGuess(viewOf(s, agents(s0)[0] as string))).toBe(false);
+  });
+
+  it('นับคะแนนเรียงจากมากไปน้อย ไม่นับบัตรว่าง', () => {
+    const counts = tally(
+      {
+        candidates: ['a', 'b', 'c'],
+        ballots: { a: 'b', b: 'c', c: 'b', d: null },
+      },
+      ['a', 'b', 'c', 'd'],
+    );
+    expect(counts).toEqual([
+      { id: 'b', votes: 2 },
+      { id: 'c', votes: 1 },
+      { id: 'a', votes: 0 },
+    ]);
   });
 
   it('คนดูไม่เห็นปุ่มใด ๆ', () => {
-    const v = viewOf(start(4, 4), 'p-hal');
-    expect([canAccuse(v), canPass(v), canBallot(v), canGuess(v)]).toEqual([
-      false,
-      false,
-      false,
-      false,
-    ]);
+    const v = viewOf(startVote(start(4, 4)), 'p-hal');
+    expect([canVote(v), canGuess(v), canStartVote(v, HOST)]).toEqual([false, false, false]);
   });
 });
 
