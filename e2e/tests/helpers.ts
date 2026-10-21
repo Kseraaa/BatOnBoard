@@ -107,8 +107,9 @@ export async function vote(page: Page, target: string) {
   await expect(page.getByText(m.vote.confirm(target))).toBeVisible();
   await page.getByRole('button', { name: m.confirm, exact: true }).click();
   // คนโหวตคนสุดท้ายจะไม่เห็น "โหวตแล้ว" เพราะรอบปิดทันที (เห็นผลโหวตแทน)
+  // รอบโหวตใหม่เห็นทั้งสองอย่างพร้อมกัน (ผลรอบแรกแสดงอยู่ด้วย) จึงใช้ first()
   await expect(
-    page.getByText(m.vote.voted(target)).or(page.getByTestId('vote-results')),
+    page.getByText(m.vote.voted(target)).or(page.getByTestId('vote-results')).first(),
   ).toBeVisible();
 }
 

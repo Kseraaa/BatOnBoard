@@ -4,7 +4,7 @@ import { MAX_NAME_LENGTH } from '@batonboard/protocol';
 import { Button, Card, CardTitle, cn, Input } from '@batonboard/ui';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Lobby } from '@/components/lobby';
 import { getGameClient } from '@/games';
@@ -53,6 +53,15 @@ export default function RoomPage() {
     // รันครั้งเดียวต่อรหัสห้อง
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
+
+  // เริ่มเกม/กลับล็อบบี้ = หน้าเปลี่ยนทั้งหน้า ปุ่มที่กดอยู่ล่างจอจึงต้องเลื่อนกลับบนสุดให้เห็นหน้าใหม่ตั้งแต่ต้น
+  const status = snap.code === code ? snap.room?.status : undefined;
+  const lastStatus = useRef(status);
+  useEffect(() => {
+    const prev = lastStatus.current;
+    lastStatus.current = status;
+    if (prev !== undefined && status !== undefined && prev !== status) window.scrollTo(0, 0);
+  }, [status]);
 
   function submitName(e: FormEvent) {
     e.preventDefault();

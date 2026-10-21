@@ -13,12 +13,10 @@ import {
   HoldToReveal,
   PixelAvatar,
   PixelIcon,
-  play,
   prefersReducedMotion,
-  SoundToggle,
 } from '@batonboard/ui';
-import type { Cue, GameScreenProps, Locale, PlayerInfo } from '@batonboard/ui';
-import { useEffect, useState } from 'react';
+import type { GameScreenProps, Locale, PlayerInfo } from '@batonboard/ui';
+import { useEffect, useRef, useState } from 'react';
 import type { HTMLAttributes, ReactNode } from 'react';
 import { getLocationSet } from '../data';
 import type { SpyfallAction, SpyfallView, VoteRound } from '../rules/types';
@@ -28,7 +26,6 @@ import { SPYFALL_ICON } from './icon';
 import { canGuess, canStartVote, canVote, champions, standings, tally, voteTargets } from './logic';
 import { spyfallMessages } from './messages';
 import type { SpyfallMessages } from './messages';
-import { useGameSounds } from './use-sounds';
 
 interface Ctx {
   view: SpyfallView;
@@ -53,7 +50,13 @@ export function SpyfallScreen(props: GameScreenProps) {
   const deck = deckFor(getLocationSet(view.locationSetId), props.options, props.locale);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const resultCue = useGameSounds(view);
+
+  // รอบใหม่กดจากปุ่มล่างสุดของหน้าเฉลย — เลื่อนกลับบนสุดให้เห็นการ์ดบทบาททันที
+  const seenRound = useRef(view.round);
+  useEffect(() => {
+    if (seenRound.current !== view.round) window.scrollTo(0, 0);
+    seenRound.current = view.round;
+  }, [view.round]);
 
   const nameOf = (id: string) => props.players.find((p) => p.id === id)?.name ?? '?';
 
@@ -78,7 +81,7 @@ export function SpyfallScreen(props: GameScreenProps) {
         <Header ctx={ctx} serverOffset={props.serverOffset} />
 
         {view.phase === 'reveal' ? (
-          <Reveal ctx={ctx} isHost={props.hostId === view.me} resultCue={resultCue} />
+          <Reveal ctx={ctx} isHost={props.hostId === view.me} />
         ) : (
           <>
             <RoleCard ctx={ctx} />
@@ -196,7 +199,6 @@ function Header({ ctx, serverOffset }: { ctx: Ctx; serverOffset: number }) {
             className="[text-shadow:0_0_18px_color-mix(in_oklch,currentColor_45%,transparent)]"
           />
         )}
-        <SoundToggle labels={m.sound} className="h-11" />
       </div>
     </header>
   );
@@ -553,16 +555,7 @@ type RevealStage = 'suspense' | 'spy' | 'done';
  * ฉากเฉลยแบบมีจังหวะ: "สายลับคือ…" → ไพ่พลิก → ผล (ผลโหวตเห็นไปแล้วตอนสายลับทาย)
  * ทุกจอเข้า reveal พร้อมกันตาม poll จึงลุ้นไปพร้อม ๆ กัน ข้ามได้ และ reduced motion ข้ามให้เลย
  */
-function Reveal({
-  ctx,
-  isHost,
-  resultCue,
-}: {
-  ctx: Ctx;
-  isHost: boolean;
-  /** เสียงชนะ/แพ้ เล่นตอนเปิดผล (null = เปิดหน้ามาตอนเฉลยอยู่แล้ว ไม่ต้องดัง) */
-  resultCue: Cue | null;
-}) {
+function Reveal({ ctx, isHost }: { ctx: Ctx; isHost: boolean }) {
   const { view, m } = ctx;
   const reveal = view.reveal;
   const result = view.result;
@@ -576,10 +569,6 @@ function Reveal({
     const t = window.setTimeout(() => setStage(next), ms);
     return () => window.clearTimeout(t);
   }, [stage]);
-
-  useEffect(() => {
-    if (stage === 'done' && resultCue) play(resultCue);
-  }, [stage, resultCue]);
 
   if (!reveal || !result) return null;
   const title =

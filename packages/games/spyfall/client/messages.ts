@@ -25,10 +25,6 @@ const th = {
   } satisfies Record<Phase, string>,
   firstAsker: (name: string) => `${name} เริ่มถามก่อน`,
   round: (n: number, total: number | null) => (total ? `รอบ ${n}/${total}` : `รอบที่ ${n}`),
-  sound: {
-    mute: 'ปิดเสียงและการสั่น',
-    unmute: 'เปิดเสียงและการสั่น',
-  },
   card: {
     hint: 'กดค้างเพื่อดูการ์ดของคุณ',
     back: 'ลับสุดยอด',
@@ -193,10 +189,6 @@ const en: SpyfallMessages = {
   },
   firstAsker: (name) => `${name} asks first`,
   round: (n, total) => (total ? `Round ${n}/${total}` : `Round ${n}`),
-  sound: {
-    mute: 'Turn off sound and vibration',
-    unmute: 'Turn on sound and vibration',
-  },
   card: {
     hint: 'Press and hold to see your card',
     back: 'Top secret',
