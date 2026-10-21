@@ -1,4 +1,5 @@
 import {
+  botAction,
   createRng,
   dispatchAction,
   EngineError,
@@ -9,6 +10,7 @@ import {
 } from '@batonboard/engine';
 import type { AnyGameDefinition, GameRegistry, PlayerId, Rng } from '@batonboard/engine';
 import {
+  addBotSchema,
   createRoomSchema,
   joinRoomSchema,
   kickSchema,
@@ -26,6 +28,8 @@ export const HOST_GRACE_MS = 30_000;
 /** ห้องที่ไม่มีใครแตะนานเกินนี้หมดอายุ (store ตั้ง TTL ตามนี้) */
 export const ROOM_TTL_SECONDS = 6 * 60 * 60;
 const MAX_KICKED = 50;
+/** บอทรอให้ห้องนิ่งนานเท่านี้ก่อนเล่น (คนดูทัน และไม่รัวจนกดอะไรไม่ได้) */
+export const BOT_DELAY_MS = 1_500;
 
 export interface StoredPlayer {
   id: PlayerId;
@@ -33,6 +37,8 @@ export interface StoredPlayer {
   /** เก็บแค่ hash ของ token — ถ้า store รั่ว ก็สวมรอยผู้เล่นไม่ได้ */
   tokenHash: string;
   lastSeen: number;
+  /** บอททดสอบ: ไม่มี token (`tokenHash` ว่าง) server เล่นแทนใน tick ออนไลน์ตลอด ไม่เป็น host */
+  bot?: true;
 }
 
 /** ห้องทั้งห้องเป็น JSON ก้อนเดียว เก็บใน store (Redis) ได้ตรง ๆ */
@@ -88,7 +94,11 @@ function bump(env: RoomEnv, room: Room, patch: Partial<Room>): Room {
   return { ...room, ...patch, version: room.version + 1, updatedAt: env.now };
 }
 
-export const isOnline = (p: StoredPlayer, now: number) => now - p.lastSeen < OFFLINE_AFTER_MS;
+export const isOnline = (p: StoredPlayer, now: number) =>
+  p.bot === true || now - p.lastSeen < OFFLINE_AFTER_MS;
+
+/** คนจริงที่ออนไลน์ (รับ host ต่อได้) */
+const canHost = (p: StoredPlayer, now: number) => p.bot !== true && isOnline(p, now);
 
 export function createRoom(
   env: RoomEnv,
@@ -145,11 +155,8 @@ export function joinRoom(
   }
 
   const game = gameOf(env, room);
-  if (room.players.length >= game.maxPlayers) return fail(RoomError.RoomFull);
-  const lower = name.toLocaleLowerCase();
-  if (room.players.some((p) => p.name.toLocaleLowerCase() === lower)) {
-    return fail(RoomError.NameTaken);
-  }
+  const full = checkRoomFor(game, room, name);
+  if (full) return fail(full);
 
   const newToken = env.ids.token();
   const player: StoredPlayer = {
@@ -162,11 +169,41 @@ export function joinRoom(
   return ok({ room: next, joined: { code: room.code, playerId: player.id, token: newToken } });
 }
 
+/** ห้องเต็มหรือชื่อซ้ำ (ไม่สนตัวพิมพ์) */
+function checkRoomFor(game: AnyGameDefinition, room: Room, name: string): string | null {
+  if (room.players.length >= game.maxPlayers) return RoomError.RoomFull;
+  const lower = name.toLocaleLowerCase();
+  return room.players.some((p) => p.name.toLocaleLowerCase() === lower)
+    ? RoomError.NameTaken
+    : null;
+}
+
+/** host เพิ่มบอททดสอบตอนอยู่ล็อบบี้ — เฉพาะเกมที่มี `bot` */
+export function addBot(env: RoomEnv, room: Room, by: PlayerId, payload: unknown): Ack<Room> {
+  const notHost = requireHost(room, by);
+  if (notHost) return fail(notHost);
+  if (room.status !== 'lobby') return fail(RoomError.NotInLobby);
+  const parsed = addBotSchema.safeParse(payload);
+  if (!parsed.success) return fail(RoomError.InvalidPayload);
+  const game = gameOf(env, room);
+  if (!game.bot) return fail(RoomError.BotsUnsupported);
+  const full = checkRoomFor(game, room, parsed.data.name);
+  if (full) return fail(full);
+  const bot: StoredPlayer = {
+    id: env.ids.playerId(),
+    name: parsed.data.name,
+    tokenHash: '',
+    lastSeen: env.now,
+    bot: true,
+  };
+  return ok(bump(env, room, { players: [...room.players, bot] }));
+}
+
 /** หาผู้เล่นจาก token */
 export function authorize(env: RoomEnv, room: Room, token: string | null): Ack<StoredPlayer> {
   if (!token) return fail(RoomError.NotInRoom);
   const hash = env.ids.hash(token);
-  const player = room.players.find((p) => p.tokenHash === hash);
+  const player = room.players.find((p) => p.bot !== true && p.tokenHash === hash);
   if (player) return ok(player);
   return fail(room.kicked.includes(hash) ? RoomError.Kicked : RoomError.NotInRoom);
 }
@@ -184,6 +221,7 @@ export function touch(env: RoomEnv, room: Room, playerId: PlayerId): Room {
 /**
  * งานที่ขึ้นกับเวลา ทำแบบ lazy ทุกครั้งที่มี request เข้ามา (ไม่มี timer บน serverless):
  * - เรียก onDeadline ของเกม "ณ เวลา deadline จริง" ทุกอันที่เลยมาแล้ว
+ * - ให้บอทเล่น 1 action เมื่อห้องนิ่งมา BOT_DELAY_MS แล้ว
  * - โอน host ที่ออฟไลน์นานเกิน HOST_GRACE_MS
  */
 export function tick(env: RoomEnv, room: Room): Room {
@@ -199,14 +237,38 @@ export function tick(env: RoomEnv, room: Room): Room {
       if (state === next.state) break;
       next = bump(env, next, { state });
     }
+    next = runBots(env, next, game);
   }
 
   const host = next.players.find((p) => p.id === next.hostId);
   if (host && env.now - host.lastSeen > HOST_GRACE_MS) {
-    const heir = next.players.find((p) => p.id !== host.id && isOnline(p, env.now));
+    const heir = next.players.find((p) => p.id !== host.id && canHost(p, env.now));
     if (heir) next = bump(env, next, { hostId: heir.id });
   }
   return next;
+}
+
+/** บอทคนแรก (ตามลำดับเข้าห้อง) ที่มี action ที่ผ่าน validate ได้เล่น 1 action */
+function runBots(env: RoomEnv, room: Room, game: AnyGameDefinition): Room {
+  if (env.now - room.updatedAt < BOT_DELAY_MS) return room;
+  // ผสมเวลาเข้าไปด้วย ไม่งั้นห้องที่ไม่เปลี่ยนได้ rng เดิมทุก tick บอทจะตัดสินใจเหมือนเดิมตลอด
+  const rng = createRng((rngFor(room).int(0x7fffffff) ^ env.now) >>> 0);
+  for (const bot of room.players) {
+    if (bot.bot !== true) continue;
+    const payload = botAction(game, room.state, bot.id, rng, env.now);
+    if (payload === null) continue;
+    const res = dispatchAction(
+      game,
+      room.state,
+      payload,
+      bot.id,
+      { hostId: room.hostId },
+      env.now,
+      rngFor(room),
+    );
+    if (res.ok) return bump(env, room, { state: res.value });
+  }
+  return room;
 }
 
 /** ผู้เล่นออกเอง — คืน null ถ้าห้องว่าง (ลบห้อง) */
@@ -223,11 +285,13 @@ function removeFromRoom(
   const player = room.players.find((p) => p.id === playerId);
   if (!player) return room;
   const players = room.players.filter((p) => p.id !== playerId);
-  if (players.length === 0) return null;
+  // เหลือแต่บอท = ไม่มีใครเล่นแล้ว ลบห้อง
+  const humans = players.filter((p) => p.bot !== true);
+  if (humans.length === 0) return null;
 
   let hostId = room.hostId;
   if (hostId === playerId) {
-    hostId = (players.find((p) => isOnline(p, env.now)) ?? players[0])?.id ?? hostId;
+    hostId = (humans.find((p) => canHost(p, env.now)) ?? humans[0])?.id ?? hostId;
   }
   const state =
     room.status === 'playing'
@@ -237,7 +301,10 @@ function removeFromRoom(
     players,
     hostId,
     state,
-    kicked: kicked ? [...room.kicked, player.tokenHash].slice(-MAX_KICKED) : room.kicked,
+    kicked:
+      kicked && player.bot !== true
+        ? [...room.kicked, player.tokenHash].slice(-MAX_KICKED)
+        : room.kicked,
   });
 }
 
@@ -323,7 +390,13 @@ export function snapshot(env: RoomEnv, room: Room, viewer: PlayerId): RoomSnapsh
       hostId: room.hostId,
       status: room.status,
       options: room.options,
-      players: room.players.map((p, i) => ({ id: p.id, name: p.name, online: online[i] ?? false })),
+      players: room.players.map((p, i) => ({
+        id: p.id,
+        name: p.name,
+        online: online[i] ?? false,
+        bot: p.bot === true,
+      })),
+      botsAllowed: gameOf(env, room).bot !== undefined,
     },
     view: room.status === 'playing' ? gameOf(env, room).playerView(room.state, viewer) : null,
     serverNow: env.now,

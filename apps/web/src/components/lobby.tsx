@@ -3,7 +3,7 @@
 import type { RoomStateMessage } from '@batonboard/protocol';
 import { Badge, Button, Card, CardTitle, PixelAvatar } from '@batonboard/ui';
 import type { GameClient } from '@batonboard/ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getRoomClient } from '@/lib/room-client';
 import { errorText, useLocale, useT } from '@/messages';
 
@@ -21,12 +21,26 @@ export function Lobby({ room, me, game, onLeave }: LobbyProps) {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmKick, setConfirmKick] = useState<string | null>(null);
+  // ปุ่มเพิ่มบอทซ่อนไว้ เปิดด้วย ?bots=1 ใน URL ของห้อง (ผู้เล่นทั่วไปไม่เห็น)
+  const [showBots, setShowBots] = useState(false);
+
+  useEffect(() => {
+    setShowBots(new URLSearchParams(window.location.search).get('bots') === '1');
+  }, []);
 
   const isHost = room.hostId === me;
   const minPlayers = game?.minPlayers ?? 1;
   const maxPlayers = game?.maxPlayers ?? room.players.length;
   const enough = room.players.length >= minPlayers;
   const gameName = game?.displayName[locale] ?? room.gameId;
+  const canAddBot = isHost && showBots && room.botsAllowed && room.players.length < maxPlayers;
+
+  function addBot() {
+    const taken = new Set(room.players.map((p) => p.name.toLocaleLowerCase()));
+    let n = 1;
+    while (taken.has(t.room.botName(n).toLocaleLowerCase())) n++;
+    void run(client.addBot(t.room.botName(n)));
+  }
 
   async function run(p: Promise<{ ok: boolean; error?: string }>) {
     setError(null);
@@ -81,6 +95,7 @@ export function Lobby({ room, me, game, onLeave }: LobbyProps) {
                 />
               </span>
               <span className="flex-1 truncate font-semibold">{p.name}</span>
+              {p.bot && <Badge variant="outline">🤖 {t.room.bot}</Badge>}
               {p.id === room.hostId && <Badge variant="secondary">{t.room.host}</Badge>}
               {p.id === me && <Badge variant="outline">{t.room.you}</Badge>}
               {!p.online && <Badge variant="outline">{t.room.offline}</Badge>}
@@ -92,6 +107,11 @@ export function Lobby({ room, me, game, onLeave }: LobbyProps) {
             </li>
           ))}
         </ul>
+        {canAddBot && (
+          <Button block variant="outline" className="mt-3" onClick={addBot}>
+            🤖 {t.room.addBot}
+          </Button>
+        )}
         {confirmKick && (
           <div className="mt-3 rounded-xl bg-muted p-3">
             <p className="mb-2 text-sm">

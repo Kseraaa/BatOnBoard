@@ -42,6 +42,12 @@ export interface GameDefinition<State, Action, View, Options = unknown> {
   /** ผู้เล่นถูกเตะหรือออกกลางเกม */
   onPlayerLeave?(state: State, player: PlayerId, now: number): State;
   isOver(state: State): boolean;
+  /**
+   * บอททดสอบ: เลือก action ถัดไปจาก view ของบอทเอง (เห็นเท่าผู้เล่นคนหนึ่ง โกงไม่ได้)
+   * คืน null = ยังไม่ทำอะไร · ไม่มี method นี้ = เกมนี้เพิ่มบอทไม่ได้
+   * action ที่คืนยังผ่าน actionSchema → validate เหมือนของผู้เล่นจริง
+   */
+  bot?(view: View, rng: Rng, now: number): Action | null;
 }
 
 /**

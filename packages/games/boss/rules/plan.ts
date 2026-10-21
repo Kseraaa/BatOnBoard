@@ -31,6 +31,39 @@ export function slotOwner(
   return table.offered.find((o) => o.card === source)?.by ?? null;
 }
 
+/** แหล่งที่ใส่ตระกูลนี้ได้ตอนนี้: นักลงทุน (ถ้าไม่ไปเที่ยว) และไพ่ตระกูลบนโต๊ะ */
+export function sourcesOf(
+  table: Table,
+  family: Family,
+): { source: Plan['slots'][number]['source']; owner: PlayerId }[] {
+  const sources = [
+    'investor' as const,
+    ...table.offered.filter((o) => cardFamily(o.card) === family).map((o) => o.card),
+  ];
+  return sources.flatMap((source) => {
+    const owner = slotOwner(table, family, source);
+    return owner === null ? [] : [{ source, owner }];
+  });
+}
+
+/** แผนเริ่มต้น: แหล่งแรกที่มีของทุกตระกูล ตัวเลือกใช้ตระกูลที่มีของก่อน (อาจไม่ครบ) */
+export function autoSlots(space: SpaceDef, table: Table): Plan['slots'] {
+  const slots: Plan['slots'] = [];
+  for (const family of space.required) {
+    const first = sourcesOf(table, family)[0];
+    if (first) slots.push({ family, source: first.source });
+  }
+  const optional = space.optional;
+  if (optional !== null) {
+    for (const family of optional.from) {
+      if (slots.length - space.required.length >= optional.count) break;
+      const first = sourcesOf(table, family)[0];
+      if (first) slots.push({ family, source: first.source });
+    }
+  }
+  return slots;
+}
+
 /** ผู้ร่วมดีลตามแผน (ไม่ซ้ำ เรียงตามลำดับ slot) */
 export function participants(table: Table, plan: Plan): PlayerId[] {
   const owners = plan.slots.map((s) => slotOwner(table, s.family, s.source));

@@ -227,6 +227,7 @@ export class RoomClient {
   backToLobby = () => this.command(api.lobby);
   updateSettings = (options: unknown) => this.command(api.settings, { options });
   kick = (playerId: string) => this.command(api.kick, { playerId });
+  addBot = (name: string) => this.command(api.bot, { name });
   action = (payload: unknown) => this.command(api.action, payload);
 }
 

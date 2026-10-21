@@ -1,3 +1,4 @@
+import { boss } from '@batonboard/boss';
 import { createRegistry } from '@batonboard/engine';
 import { ROOM_CODE_ALPHABET } from '@batonboard/protocol';
 import type { JoinedMessage, RoomSnapshot } from '@batonboard/protocol';
@@ -30,6 +31,7 @@ export function createTestService() {
   const store = new MemoryRoomStore(ROOM_TTL_SECONDS * 1000, now);
   const registry = createRegistry();
   registry.register(spyfall);
+  registry.register(boss);
   const service = new RoomService({ store, registry, ids: sequentialIds(), now });
   const advance = (ms: number) => {
     clock.time += ms;

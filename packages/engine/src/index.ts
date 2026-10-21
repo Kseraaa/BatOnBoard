@@ -11,6 +11,7 @@ export { createRng } from './rng';
 export { createRegistry } from './registry';
 export type { GameRegistry } from './registry';
 export {
+  botAction,
   dispatchAction,
   fireDeadline,
   getDeadline,

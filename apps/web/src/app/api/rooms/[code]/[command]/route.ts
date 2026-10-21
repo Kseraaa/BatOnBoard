@@ -27,6 +27,8 @@ export function POST(req: Request, ctx: { params: Promise<{ code: string; comman
         return reply(await rooms.backToLobby(code, token));
       case 'kick':
         return reply(await rooms.kick(code, token, body));
+      case 'bot':
+        return reply(await rooms.addBot(code, token, body));
       case 'action':
         return reply(await rooms.action(code, token, body));
       default:

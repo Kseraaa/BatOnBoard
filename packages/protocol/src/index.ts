@@ -39,12 +39,16 @@ export const joinRoomSchema = z.object({
 
 export const kickSchema = z.object({ playerId: idSchema });
 
+/** host เพิ่มบอททดสอบ (เอาออกด้วย kick) */
+export const addBotSchema = z.object({ name: playerNameSchema });
+
 /** options ตรวจละเอียดอีกชั้นด้วย optionsSchema ของเกม */
 export const settingsSchema = z.object({ options: z.unknown() });
 
 export type CreateRoomPayload = z.input<typeof createRoomSchema>;
 export type JoinRoomPayload = z.input<typeof joinRoomSchema>;
 export type KickPayload = z.input<typeof kickSchema>;
+export type AddBotPayload = z.input<typeof addBotSchema>;
 export type SettingsPayload = z.input<typeof settingsSchema>;
 
 // ---- server → client ----
@@ -55,6 +59,8 @@ export interface RoomPlayer {
   id: string;
   name: string;
   online: boolean;
+  /** บอททดสอบที่ server เล่นแทน */
+  bot: boolean;
 }
 
 /** ข้อมูลสาธารณะของห้อง — ห้ามมี token หรือข้อมูลลับของเกม */
@@ -65,6 +71,8 @@ export interface RoomStateMessage {
   status: RoomStatus;
   options: unknown;
   players: RoomPlayer[];
+  /** เกมนี้มีบอททดสอบให้เพิ่มไหม */
+  botsAllowed: boolean;
 }
 
 /**
@@ -107,6 +115,8 @@ export const api = {
   start: (code: string) => `/api/rooms/${code}/start`,
   lobby: (code: string) => `/api/rooms/${code}/lobby`,
   kick: (code: string) => `/api/rooms/${code}/kick`,
+  /** POST AddBotPayload — host เท่านั้น ตอนอยู่ล็อบบี้ */
+  bot: (code: string) => `/api/rooms/${code}/bot`,
   action: (code: string) => `/api/rooms/${code}/action`,
 } as const;
 
@@ -124,5 +134,6 @@ export const RoomError = {
   NotPlaying: 'not-playing',
   PlayerNotFound: 'player-not-found',
   CannotKickSelf: 'cannot-kick-self',
+  BotsUnsupported: 'bots-unsupported',
   Busy: 'busy',
 } as const;

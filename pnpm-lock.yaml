@@ -168,6 +168,9 @@ importers:
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
+      '@batonboard/boss':
+        specifier: workspace:*
+        version: link:../games/boss
       '@batonboard/spyfall':
         specifier: workspace:*
         version: link:../games/spyfall

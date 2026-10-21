@@ -21,7 +21,8 @@ export {
 } from './constants';
 export type { BossErrorCode } from './constants';
 export { cardFamily, cardKind, fullDeck } from './cards';
-export { checkPlan, participants, slotOwner, spaceFamilies } from './plan';
+export { autoSlots, checkPlan, participants, slotOwner, sourcesOf, spaceFamilies } from './plan';
+export { createBossBot } from './bot';
 export type { Table } from './plan';
 export type {
   BossAction,

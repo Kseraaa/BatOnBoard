@@ -5,7 +5,7 @@
 import type { PlayerId } from '@batonboard/engine';
 import { cardFamily, cardKind } from '../rules/cards';
 import { FAMILIES, HAND_LIMIT, RECRUIT_SET } from '../rules/constants';
-import { checkPlan, participants, slotOwner, spaceFamilies } from '../rules/plan';
+import { autoSlots, checkPlan, participants, sourcesOf, spaceFamilies } from '../rules/plan';
 import type { Table } from '../rules/plan';
 import type {
   BossView,
@@ -41,35 +41,12 @@ export function sourcesFor(
   view: BossView,
   family: Family,
 ): { source: SlotSource; owner: PlayerId }[] {
-  const deal = view.deal;
-  if (deal === null) return [];
-  const table = tableOf(deal, view);
-  const sources: SlotSource[] = [
-    'investor',
-    ...deal.offered.filter((o) => cardFamily(o.card) === family).map((o) => o.card),
-  ];
-  return sources.flatMap((source) => {
-    const owner = slotOwner(table, family, source);
-    return owner === null ? [] : [{ source, owner }];
-  });
+  return view.deal === null ? [] : sourcesOf(tableOf(view.deal, view), family);
 }
 
 /** แผนเริ่มต้นให้บอส: เลือกแหล่งแรกที่มีของทุกตระกูล ตัวเลือกใช้ตระกูลที่มีคนถือก่อน */
 export function autoPlan(view: BossView, space: SpaceDef): Plan['slots'] {
-  const slots: Plan['slots'] = [];
-  for (const family of space.required) {
-    const first = sourcesFor(view, family)[0];
-    if (first) slots.push({ family, source: first.source });
-  }
-  const optional = space.optional;
-  if (optional !== null) {
-    for (const family of optional.from) {
-      if (slots.length - space.required.length >= optional.count) break;
-      const first = sourcesFor(view, family)[0];
-      if (first) slots.push({ family, source: first.source });
-    }
-  }
-  return slots;
+  return view.deal === null ? [] : autoSlots(space, tableOf(view.deal, view));
 }
 
 /** ผู้ร่วมดีลตามแผน ไม่รวมบอส */

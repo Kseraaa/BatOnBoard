@@ -86,6 +86,18 @@ export function removePlayer<S, A, V, O>(
   return game.onPlayerLeave(state, player, now);
 }
 
+/** action ถัดไปของบอท `player` (ตัดสินจาก view ของบอทเท่านั้น) หรือ null */
+export function botAction<S, A, V, O>(
+  game: GameDefinition<S, A, V, O>,
+  state: S,
+  player: PlayerId,
+  rng: Rng,
+  now: number,
+): A | null {
+  if (game.isOver(state) || !game.bot) return null;
+  return game.bot(game.playerView(state, player), rng, now);
+}
+
 /** view แยกรายผู้เล่น (กฎข้อ 2: ห้าม broadcast state เดียวให้ทั้งห้อง) */
 export function viewsFor<S, A, V, O>(
   game: GameDefinition<S, A, V, O>,

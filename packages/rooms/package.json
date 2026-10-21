@@ -14,6 +14,7 @@
     "@batonboard/protocol": "workspace:*"
   },
   "devDependencies": {
+    "@batonboard/boss": "workspace:*",
     "@batonboard/spyfall": "workspace:*"
   }
 }

@@ -69,6 +69,8 @@ export class RoomService {
     this.run(code, token, (env, room, by) => R.updateSettings(env, room, by, payload));
   start = (code: string, token: string | null) => this.run(code, token, R.start);
   backToLobby = (code: string, token: string | null) => this.run(code, token, R.backToLobby);
+  addBot = (code: string, token: string | null, payload: unknown) =>
+    this.run(code, token, (env, room, by) => R.addBot(env, room, by, payload));
   kick = (code: string, token: string | null, payload: unknown) =>
     this.run(code, token, (env, room, by) => R.kick(env, room, by, payload));
   action = (code: string, token: string | null, payload: unknown) =>

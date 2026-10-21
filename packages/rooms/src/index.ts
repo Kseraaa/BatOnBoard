@@ -1,7 +1,9 @@
 export {
   action,
+  addBot,
   authorize,
   backToLobby,
+  BOT_DELAY_MS,
   createRoom,
   HOST_GRACE_MS,
   isOnline,

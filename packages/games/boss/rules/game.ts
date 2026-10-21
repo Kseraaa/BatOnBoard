@@ -37,6 +37,7 @@ import {
 } from './constants';
 import { cardFamily, cardKind, fullDeck } from './cards';
 import { checkPlan, participants, spaceFamilies } from './plan';
+import { createBossBot } from './bot';
 
 const idSchema = z.string().min(1).max(64);
 const cardSchema = z.string().min(1).max(32);
@@ -703,5 +704,6 @@ export function createBoss(
     },
 
     isOver: (state) => state.phase === 'ended',
+    bot: createBossBot(spaces),
   };
 }
