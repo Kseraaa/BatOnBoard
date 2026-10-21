@@ -33,6 +33,8 @@ export interface SpyfallOptions {
   /** id สถานที่ในชุดมาตรฐานที่ไม่ใช้ */
   disabled?: string[];
   custom?: CustomLocation[];
+  /** จำนวนรอบต่อแมตช์ (นับคะแนนรวม) — ไม่ใส่ = เล่นไปเรื่อย ๆ ไม่จำกัด */
+  rounds?: number;
 }
 
 export type WinReason =
@@ -81,8 +83,12 @@ export interface SpyfallState {
   /** สถานที่ที่สายลับทาย (null = ยังไม่ทายหรือไม่ทันเวลา) */
   spyGuess: string | null;
   result: SpyfallResult | null;
-  /** จำนวนรอบที่ชนะ (+1 ให้ทุกคนใน result.winners) */
+  /** คะแนนรวมของแมตช์ (+1 ให้ทุกคนใน result.winners) */
   scores: Record<PlayerId, number>;
+  /** รอบที่เท่าไหร่ของแมตช์ (เริ่ม 1) — ห้องที่เริ่มก่อนมีแมตช์ไม่มี field นี้ */
+  round?: number;
+  /** จำนวนรอบของแมตช์จากตั้งค่าห้อง — null/ไม่มี = ไม่จำกัด */
+  rounds?: number | null;
 }
 
 export type SpyfallAction =
@@ -122,4 +128,8 @@ export interface SpyfallView {
     spyGuess: string | null;
   } | null;
   scores: Record<PlayerId, number>;
+  round: number;
+  rounds: number | null;
+  /** reveal ของรอบสุดท้ายในแมตช์ — NEXT_ROUND จะเริ่มแมตช์ใหม่ (ล้างคะแนน) */
+  matchOver: boolean;
 }

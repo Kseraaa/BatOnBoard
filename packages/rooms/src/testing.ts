@@ -25,6 +25,8 @@ export function sequentialIds(): IdSource {
   };
 }
 
+export const NO_BOTS_GAME = 'no-bots';
+
 export function createTestService() {
   const clock = { time: 1_700_000_000_000 };
   const now = () => clock.time;
@@ -32,6 +34,8 @@ export function createTestService() {
   const registry = createRegistry();
   registry.register(spyfall);
   registry.register(boss);
+  // เกมที่ไม่มีบอท ไว้เทสต์ว่าห้องปฏิเสธการเพิ่มบอท
+  registry.register({ ...spyfall, id: NO_BOTS_GAME, bot: undefined });
   const service = new RoomService({ store, registry, ids: sequentialIds(), now });
   const advance = (ms: number) => {
     clock.time += ms;

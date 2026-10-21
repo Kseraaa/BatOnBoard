@@ -19,14 +19,18 @@ import {
   MAX_CUSTOM_ROLES,
   MAX_CUSTOM_TEXT,
   MAX_DURATION_MS,
+  MAX_MATCH_ROUNDS,
   MAX_PLAYERS,
   MIN_DECK_SIZE,
   MIN_DURATION_MS,
+  MIN_MATCH_ROUNDS,
   MIN_PLAYERS,
   SpyfallError,
   VOTE_MS,
 } from './constants';
+import { createSpyfallBot } from './bot';
 import { buildDeck } from './deck';
+import { isMatchOver } from './match';
 
 const idSchema = z.string().min(1).max(64);
 
@@ -59,6 +63,7 @@ function optionsSchemaFor(builtin: LocationDef[]): z.ZodType<SpyfallOptions> {
         )
         .max(MAX_CUSTOM_LOCATIONS)
         .optional(),
+      rounds: z.number().int().min(MIN_MATCH_ROUNDS).max(MAX_MATCH_ROUNDS).optional(),
     })
     .superRefine((options, ctx) => {
       const disabled = options.disabled ?? [];
@@ -90,13 +95,19 @@ function assertValidConfig({ locations }: SpyfallConfig): void {
   }
 }
 
+interface Match {
+  durationMs: number;
+  scores: Record<PlayerId, number>;
+  round: number;
+  rounds: number | null;
+}
+
 function deal(
   players: PlayerId[],
   deck: LocationDef[],
   rng: Rng,
   now: number,
-  durationMs: number,
-  scores: Record<PlayerId, number>,
+  { durationMs, scores, round, rounds }: Match,
   previousLocationId: string | null,
 ): SpyfallState {
   const candidates = deck.filter((l) => l.id !== previousLocationId);
@@ -122,6 +133,8 @@ function deal(
     spyGuess: null,
     result: null,
     scores: Object.fromEntries(players.map((p) => [p, scores[p] ?? 0])),
+    round,
+    rounds,
   };
 }
 
@@ -230,7 +243,8 @@ export function createSpyfall(
 
     setup(players, options, rng, now) {
       const deck = buildDeck(config.locations, options);
-      return deal(players, deck, rng, now, options.durationMs, {}, null);
+      const match = { durationMs: options.durationMs, scores: {}, round: 1 };
+      return deal(players, deck, rng, now, { ...match, rounds: options.rounds ?? null }, null);
     },
 
     validate(state, action, by, ctx) {
@@ -284,16 +298,17 @@ export function createSpyfall(
         }
         case 'SPY_GUESS':
           return finishGuess(state, action.locationId);
-        case 'NEXT_ROUND':
-          return deal(
-            state.players,
-            state.deck,
-            rng,
-            now,
-            state.durationMs,
-            state.scores,
-            state.locationId,
-          );
+        case 'NEXT_ROUND': {
+          // จบแมตช์แล้ว = เริ่มแมตช์ใหม่ ล้างคะแนน
+          const fresh = isMatchOver(state);
+          const match: Match = {
+            durationMs: state.durationMs,
+            scores: fresh ? {} : state.scores,
+            round: fresh ? 1 : (state.round ?? 1) + 1,
+            rounds: state.rounds ?? null,
+          };
+          return deal(state.players, state.deck, rng, now, match, state.locationId);
+        }
       }
     },
 
@@ -335,6 +350,10 @@ export function createSpyfall(
             }
           : null,
         scores: state.scores,
+        // ห้องที่เริ่มก่อนมีแมตช์ไม่มี round/rounds
+        round: state.round ?? 1,
+        rounds: state.rounds ?? null,
+        matchOver: isMatchOver(state),
       };
     },
 
@@ -370,6 +389,8 @@ export function createSpyfall(
       }
       return left;
     },
+
+    bot: createSpyfallBot(config.locations),
 
     // reveal ยังรับ NEXT_ROUND ได้ — จบจริงเมื่อคนไม่พอเล่นรอบต่อ
     isOver: (state) => state.phase === 'reveal' && state.players.length < MIN_PLAYERS,

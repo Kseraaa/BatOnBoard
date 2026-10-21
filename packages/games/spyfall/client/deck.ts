@@ -20,11 +20,14 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 
+/** options ของห้องที่เติมค่าเริ่มต้นแล้ว — rounds ไม่มี = ไม่จำกัดรอบ */
+export type RoomOptions = Required<Omit<SpyfallOptions, 'rounds'>> & Pick<SpyfallOptions, 'rounds'>;
+
 /**
  * อ่าน options ของห้อง — server ตรวจด้วย optionsSchema แล้ว แต่ใน client เป็น unknown
  * ตรวจแบบเบา ๆ (ไม่ใช้ zod เพื่อไม่ให้ติดไปใน bundle) และเติมค่าเริ่มต้น
  */
-export function readOptions(options: unknown): Required<SpyfallOptions> {
+export function readOptions(options: unknown): RoomOptions {
   const o = isObject(options) ? options : {};
   const custom: CustomLocation[] = Array.isArray(o.custom)
     ? o.custom.filter(isObject).map((c) => ({
@@ -33,11 +36,12 @@ export function readOptions(options: unknown): Required<SpyfallOptions> {
         roles: strings(c.roles),
       }))
     : [];
-  return {
+  const base = {
     durationMs: typeof o.durationMs === 'number' ? o.durationMs : DEFAULT_DURATION_MS,
     disabled: strings(o.disabled),
     custom,
   };
+  return typeof o.rounds === 'number' ? { ...base, rounds: o.rounds } : base;
 }
 
 /** สถานที่ที่ใช้ในห้องนี้พร้อมชื่อที่แสดง — id ตรงกับ buildDeck ของกติกา */

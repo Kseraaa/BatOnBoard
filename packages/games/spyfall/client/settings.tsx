@@ -6,10 +6,10 @@ import { useEffect, useState } from 'react';
 import { DEFAULT_LOCATION_SET_ID, getLocationSet } from '../data';
 import type { LocationData } from '../data';
 import { MIN_DECK_SIZE } from '../rules/constants';
-import type { SpyfallOptions } from '../rules/types';
 import { checkCustomLocation, nextCustomId, parseRoles } from './custom-location';
 import type { CustomLocationError } from './custom-location';
 import { readOptions } from './deck';
+import type { RoomOptions } from './deck';
 import { spyfallMessages } from './messages';
 import { loadSavedDeck, saveDeck } from './saved-deck';
 import { exportDeck, importDeck } from './share';
@@ -17,8 +17,10 @@ import type { DeckChoice } from './share';
 
 /** ตัวเลือกเวลาถามตอบ (นาที) — server ตรวจช่วงที่ถูกต้องอีกชั้น */
 const DURATION_CHOICES = [5, 6, 8, 10, 12];
+/** จำนวนรอบต่อแมตช์ — null = ไม่จำกัด */
+const ROUND_CHOICES = [null, 3, 5, 8, 10];
 
-type Options = Required<SpyfallOptions>;
+type Options = RoomOptions;
 
 export function SpyfallSettings({ options, locale, editable, onChange }: GameSettingsProps) {
   const m = spyfallMessages[locale].settings;
@@ -56,34 +58,36 @@ export function SpyfallSettings({ options, locale, editable, onChange }: GameSet
 
   return (
     <div className="space-y-5">
-      <div className="space-y-2">
-        <p className="text-sm font-semibold">{m.duration}</p>
-        <div className="grid grid-cols-5 gap-1.5" role="radiogroup" aria-label={m.duration}>
-          {DURATION_CHOICES.map((min) => {
-            const ms = min * 60_000;
-            const selected = ms === current.durationMs;
-            return (
-              <button
-                key={min}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                disabled={!editable}
-                onClick={() => update({ durationMs: ms })}
-                className={cn(
-                  'h-11 rounded-lg text-sm font-semibold transition-colors disabled:cursor-default',
-                  selected
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground',
-                  !editable && !selected && 'opacity-50',
-                )}
-              >
-                {m.minutes(min)}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <Choices
+        label={m.duration}
+        editable={editable}
+        choices={DURATION_CHOICES.map((min) => ({
+          key: String(min),
+          label: m.minutes(min),
+          selected: min * 60_000 === current.durationMs,
+          pick: () => update({ durationMs: min * 60_000 }),
+        }))}
+      />
+
+      <Choices
+        label={m.rounds}
+        hint={m.roundsHint}
+        editable={editable}
+        testId="rounds"
+        choices={ROUND_CHOICES.map((n) => ({
+          key: String(n),
+          label: n === null ? m.unlimited : m.roundCount(n),
+          selected: n === (current.rounds ?? null),
+          pick: () => {
+            // ไม่จำกัด = ไม่ส่ง rounds (ห้องเก่าก็ไม่มี field นี้)
+            const next: Options = { ...current };
+            if (n === null) delete next.rounds;
+            else next.rounds = n;
+            setCurrent(next);
+            onChange(next);
+          },
+        }))}
+      />
 
       <div className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
@@ -133,6 +137,52 @@ export function SpyfallSettings({ options, locale, editable, onChange }: GameSet
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** แถวปุ่มเลือกค่าเดียว (เวลาถามตอบ, จำนวนรอบ) */
+function Choices({
+  label,
+  hint,
+  editable,
+  testId,
+  choices,
+}: {
+  label: string;
+  hint?: string;
+  editable: boolean;
+  testId?: string;
+  choices: { key: string; label: string; selected: boolean; pick(): void }[];
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-semibold">{label}</p>
+      <div
+        className="grid grid-cols-5 gap-1.5"
+        role="radiogroup"
+        aria-label={label}
+        data-testid={testId}
+      >
+        {choices.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            role="radio"
+            aria-checked={c.selected}
+            disabled={!editable}
+            onClick={c.pick}
+            className={cn(
+              'h-11 rounded-lg px-1 text-sm font-semibold transition-colors disabled:cursor-default',
+              c.selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+              !editable && !c.selected && 'opacity-50',
+            )}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }

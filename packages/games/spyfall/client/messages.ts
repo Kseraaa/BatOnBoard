@@ -24,6 +24,11 @@ const th = {
     reveal: 'เฉลย',
   } satisfies Record<Phase, string>,
   firstAsker: (name: string) => `${name} เริ่มถามก่อน`,
+  round: (n: number, total: number | null) => (total ? `รอบ ${n}/${total}` : `รอบที่ ${n}`),
+  sound: {
+    mute: 'ปิดเสียงและการสั่น',
+    unmute: 'เปิดเสียงและการสั่น',
+  },
   card: {
     hint: 'กดค้างเพื่อดูการ์ดของคุณ',
     back: 'ลับสุดยอด',
@@ -92,7 +97,12 @@ const th = {
     spyRole: 'สายลับ',
     nextRound: 'เล่นรอบต่อไป',
     waitingHost: 'รอ host เริ่มรอบใหม่',
-    wins: 'ชนะ',
+    scoreboard: 'คะแนนรวม',
+    points: (n: number) => `${n} แต้ม`,
+    matchOver: 'จบแมตช์!',
+    champions: (names: string) => `แชมป์: ${names}`,
+    newMatch: 'เริ่มแมตช์ใหม่',
+    waitingHostMatch: 'รอ host เริ่มแมตช์ใหม่',
     reasons: {
       'caught-spy-guessed': 'โหวตจับสายลับได้ แต่สายลับทายสถานที่ถูก',
       caught: 'โหวตจับสายลับได้ และสายลับทายสถานที่ผิด',
@@ -105,6 +115,10 @@ const th = {
   settings: {
     duration: 'เวลาถามตอบ',
     minutes: (m: number) => `${m} นาที`,
+    rounds: 'จำนวนรอบต่อแมตช์',
+    roundsHint: 'ผู้ชนะแต่ละรอบได้ 1 แต้ม ครบแล้วสรุปคะแนนรวมหาแชมป์',
+    unlimited: 'ไม่จำกัด',
+    roundCount: (n: number) => `${n} รอบ`,
     locations: 'สถานที่',
     deckCount: (n: number) => `ใช้ ${n} สถานที่`,
     builtin: (on: number, total: number) => `ชุดมาตรฐาน (เปิด ${on}/${total})`,
@@ -178,6 +192,11 @@ const en: SpyfallMessages = {
     reveal: 'Reveal',
   },
   firstAsker: (name) => `${name} asks first`,
+  round: (n, total) => (total ? `Round ${n}/${total}` : `Round ${n}`),
+  sound: {
+    mute: 'Turn off sound and vibration',
+    unmute: 'Turn on sound and vibration',
+  },
   card: {
     hint: 'Press and hold to see your card',
     back: 'Top secret',
@@ -247,7 +266,12 @@ const en: SpyfallMessages = {
     spyRole: 'Spy',
     nextRound: 'Play next round',
     waitingHost: 'Waiting for the host to start the next round',
-    wins: 'wins',
+    scoreboard: 'Total score',
+    points: (n) => `${n} ${n === 1 ? 'pt' : 'pts'}`,
+    matchOver: 'Match over!',
+    champions: (names) => `Champion: ${names}`,
+    newMatch: 'Start a new match',
+    waitingHostMatch: 'Waiting for the host to start a new match',
     reasons: {
       'caught-spy-guessed': 'The spy was caught but guessed the location',
       caught: 'The spy was caught and guessed wrong',
@@ -260,6 +284,10 @@ const en: SpyfallMessages = {
   settings: {
     duration: 'Question time',
     minutes: (m) => `${m} min`,
+    rounds: 'Rounds per match',
+    roundsHint: 'Each round’s winners get 1 point. The highest total at the end is the champion.',
+    unlimited: 'No limit',
+    roundCount: (n) => `${n} rounds`,
     locations: 'Locations',
     deckCount: (n) => `${n} locations in play`,
     builtin: (on, total) => `Standard set (${on}/${total} on)`,

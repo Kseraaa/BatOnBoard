@@ -1,7 +1,9 @@
 import type { BossView } from '@batonboard/boss/rules';
+import { GUESS_MS } from '@batonboard/spyfall/rules';
+import type { SpyfallView } from '@batonboard/spyfall/rules';
 import { describe, expect, it } from 'vitest';
 import { BOT_DELAY_MS, OFFLINE_AFTER_MS } from './room';
-import { createTestService, must } from './testing';
+import { createTestService, must, NO_BOTS_GAME } from './testing';
 
 async function bossRoom() {
   const setup = createTestService();
@@ -30,7 +32,7 @@ describe('บอททดสอบ', () => {
 
   it('เกมที่ไม่มีบอท คนที่ไม่ใช่ host ชื่อซ้ำ และนอกล็อบบี้ ถูกปฏิเสธ', async () => {
     const r = createTestService();
-    const spy = must(await r.service.create({ name: 'Ann', gameId: 'spyfall' }));
+    const spy = must(await r.service.create({ name: 'Ann', gameId: NO_BOTS_GAME }));
     expect(await r.service.addBot(spy.code, spy.token, { name: 'บอท' })).toEqual({
       ok: false,
       error: 'bots-unsupported',
@@ -94,5 +96,30 @@ describe('บอททดสอบ', () => {
     must(await r.service.leave(r.code, guest.token));
     must(await r.service.leave(r.code, r.host.token));
     expect(r.store.size).toBe(0);
+  });
+
+  it('spyfall: บอทโหวตและสายลับบอททายเอง จนถึงเฉลย', async () => {
+    const r = createTestService();
+    const host = must(await r.service.create({ name: 'Ann', gameId: 'spyfall' }));
+    for (const name of ['บอท 1', 'บอท 2', 'บอท 3']) {
+      must(await r.service.addBot(host.code, host.token, { name }));
+    }
+    must(await r.service.start(host.code, host.token));
+    const view = async () =>
+      must(await r.service.poll(host.code, host.token, null))?.view as SpyfallView;
+    const act = (action: unknown) => r.service.action(host.code, host.token, action);
+    must(await act({ type: 'START_VOTE' }));
+
+    // บอทเล่นทีละ action ทุก BOT_DELAY_MS — host โหวตเอง (รวมรอบเสมอ) และถ้าเป็นสายลับก็ปล่อยหมดเวลา
+    for (let i = 0; i < 40; i++) {
+      const v = await view();
+      if (v.phase === 'reveal') break;
+      const target = v.vote?.candidates.find((c) => c !== host.playerId);
+      if (v.vote && v.vote.myVote === null && target) must(await act({ type: 'VOTE', target }));
+      r.advance(v.phase === 'guessing' && v.you.role === 'spy' ? GUESS_MS : BOT_DELAY_MS);
+    }
+    const end = await view();
+    expect(end.phase).toBe('reveal');
+    expect(end.voteRounds[0]?.ballots).not.toContain(null);
   });
 });

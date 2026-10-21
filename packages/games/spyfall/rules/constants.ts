@@ -9,6 +9,10 @@ export const VOTE_MS = 60_000;
 /** เวลาที่สายลับมีให้ทายสถานที่ — ไม่ทันถือว่าทายผิด */
 export const GUESS_MS = 60_000;
 
+/** จำนวนรอบต่อแมตช์ที่ตั้งได้ (ไม่ตั้ง = ไม่จำกัด) */
+export const MIN_MATCH_ROUNDS = 1;
+export const MAX_MATCH_ROUNDS = 20;
+
 /** สถานที่ที่ผู้เล่นสร้างเอง (อยู่ใน options ของห้อง) */
 export const MAX_CUSTOM_LOCATIONS = 20;
 /**
