@@ -216,7 +216,12 @@ describe('สายลับทายสถานที่', () => {
   it('โหวตถูก + สายลับทายถูก = สายลับชนะ', () => {
     let s = voteOut(start(4, 20), start(4, 20).spy);
     s = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
-    expect(s.result).toEqual({ winner: 'spy', winners: [s.spy], reason: 'caught-spy-guessed' });
+    expect(s.result).toEqual({
+      winner: 'spy',
+      winners: [s.spy],
+      reason: 'caught-spy-guessed',
+      points: 1,
+    });
     expect(s.spyGuess).toBe(s.locationId);
     expect(s.scores[s.spy]).toBe(1);
   });
@@ -241,19 +246,26 @@ describe('สายลับทายสถานที่', () => {
     expect([a, b, c, d, s.spy].map((p) => s.scores[p])).toEqual([1, 1, 1, 0, 0]);
   });
 
-  it('โหวตผิด + สายลับทายถูก = สายลับชนะ', () => {
+  it('โหวตผิด + สายลับทายถูก = สายลับได้ 2 แต้ม', () => {
     const s0 = start(4, 22);
     let s = voteOut(s0, agents(s0)[0] as string);
     s = act(s, s.spy, { type: 'SPY_GUESS', locationId: s.locationId });
-    expect(s.result).toEqual({ winner: 'spy', winners: [s.spy], reason: 'missed-spy-guessed' });
+    expect(s.result).toEqual({
+      winner: 'spy',
+      winners: [s.spy],
+      reason: 'missed-spy-guessed',
+      points: 2,
+    });
+    expect(s.scores[s.spy]).toBe(2);
   });
 
-  it('โหวตผิด + สายลับทายผิด = ไม่มีใครชนะ', () => {
+  it('โหวตผิด + สายลับทายผิด = สายลับได้ 1 แต้ม', () => {
     const s0 = start(4, 23);
     let s = voteOut(s0, agents(s0)[0] as string);
     s = act(s, s.spy, { type: 'SPY_GUESS', locationId: wrongLocation(s) });
-    expect(s.result).toEqual({ winner: null, winners: [], reason: 'missed' });
-    expect(Object.values(s.scores).every((n) => n === 0)).toBe(true);
+    expect(s.result).toEqual({ winner: 'spy', winners: [s.spy], reason: 'missed', points: 1 });
+    expect(agents(s).map((p) => s.scores[p])).toEqual([0, 0, 0]);
+    expect(s.scores[s.spy]).toBe(1);
   });
 
   it('สายลับไม่ทายภายในเวลา = ทายผิด', () => {
@@ -340,14 +352,24 @@ describe('ผู้เล่นออกกลางเกม', () => {
   it('สายลับออก = ทุกคนที่เหลือชนะ', () => {
     const s = start(4, 18);
     const after = removePlayer(spyfall, s, s.spy, T0);
-    expect(after.result).toEqual({ winner: 'voters', winners: agents(s), reason: 'spy-left' });
+    expect(after.result).toEqual({
+      winner: 'voters',
+      winners: agents(s),
+      reason: 'spy-left',
+      points: 1,
+    });
     expect(after.players).not.toContain(s.spy);
   });
 
   it('เหลือน้อยกว่า 3 คน = จบโดยไม่มีผู้ชนะ และ isOver', () => {
     const s = start(3, 19);
     const after = removePlayer(spyfall, s, agents(s)[0] as string, T0);
-    expect(after.result).toEqual({ winner: null, winners: [], reason: 'not-enough-players' });
+    expect(after.result).toEqual({
+      winner: null,
+      winners: [],
+      reason: 'not-enough-players',
+      points: 1,
+    });
     expect(spyfall.isOver(after)).toBe(true);
     expect(tryAct(after, HOST, { type: 'NEXT_ROUND' })).toBe('game-over');
   });

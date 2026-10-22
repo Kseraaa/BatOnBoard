@@ -122,7 +122,11 @@ export async function guess(spy: Page, location: string) {
 
 /** ชื่อสถานที่อื่นในกองที่ไม่ใช่ location (ไว้ให้สายลับทายผิด) */
 export async function otherLocation(spy: Page, location: string): Promise<string> {
-  const names = await spy.getByTestId('spy-guess').getByRole('button').allTextContents();
+  const names = await spy
+    .getByTestId('spy-guess')
+    .getByTestId('location-list')
+    .getByRole('button')
+    .allTextContents();
   return names.find((n) => n.trim() && n !== location) as string;
 }
 

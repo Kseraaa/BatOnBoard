@@ -38,10 +38,10 @@ export interface SpyfallOptions {
 }
 
 export type WinReason =
-  | 'caught-spy-guessed' // โหวตจับสายลับได้ แต่สายลับทายสถานที่ถูก → สายลับชนะ
-  | 'caught' // โหวตจับสายลับได้ สายลับทายผิด → คนที่โหวตถูกชนะ
-  | 'missed-spy-guessed' // โหวตผิด สายลับทายถูก → สายลับชนะ
-  | 'missed' // โหวตผิด สายลับทายผิด → ไม่มีใครชนะ
+  | 'caught-spy-guessed' // โหวตจับสายลับได้ แต่สายลับทายสถานที่ถูก → สายลับ +1
+  | 'caught' // โหวตจับสายลับได้ สายลับทายผิด → คนที่โหวตถูก คนละ +1
+  | 'missed-spy-guessed' // โหวตผิด สายลับทายถูก → สายลับ +2
+  | 'missed' // โหวตผิด สายลับทายผิด → สายลับ +1
   | 'spy-left' // สายลับออกจากห้องกลางเกม
   | 'not-enough-players'; // ผู้เล่นเหลือน้อยกว่าขั้นต่ำ
 
@@ -50,6 +50,8 @@ export interface SpyfallResult {
   winner: 'spy' | 'voters' | null;
   /** คนที่ได้แต้มรอบนี้ */
   winners: PlayerId[];
+  /** แต้มที่ผู้ชนะแต่ละคนได้ — ไม่มี = 1 (ห้องที่จบรอบก่อนเปลี่ยนการนับคะแนน) */
+  points?: number;
   reason: WinReason;
 }
 
@@ -83,7 +85,7 @@ export interface SpyfallState {
   /** สถานที่ที่สายลับทาย (null = ยังไม่ทายหรือไม่ทันเวลา) */
   spyGuess: string | null;
   result: SpyfallResult | null;
-  /** คะแนนรวมของแมตช์ (+1 ให้ทุกคนใน result.winners) */
+  /** คะแนนรวมของแมตช์ (+result.points ให้ทุกคนใน result.winners) */
   scores: Record<PlayerId, number>;
   /** รอบที่เท่าไหร่ของแมตช์ (เริ่ม 1) — ห้องที่เริ่มก่อนมีแมตช์ไม่มี field นี้ */
   round?: number;

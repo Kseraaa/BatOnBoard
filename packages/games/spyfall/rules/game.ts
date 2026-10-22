@@ -143,15 +143,16 @@ function endRound(
   winner: SpyfallResult['winner'],
   winners: PlayerId[],
   reason: WinReason,
+  points = 1,
 ): SpyfallState {
   const scores = { ...state.scores };
-  for (const p of winners) scores[p] = (scores[p] ?? 0) + 1;
+  for (const p of winners) scores[p] = (scores[p] ?? 0) + points;
   return {
     ...state,
     phase: 'reveal',
     deadline: null,
     voting: null,
-    result: { winner, winners, reason },
+    result: { winner, winners, reason, points },
     scores,
   };
 }
@@ -208,20 +209,20 @@ function closeVoting(state: SpyfallState, now: number, force: boolean): SpyfallS
   };
 }
 
-/** สายลับทายแล้ว (หรือหมดเวลา = null) → ตัดสินผล */
+/**
+ * สายลับทายแล้ว (หรือหมดเวลา = null) → ตัดสินผล
+ * โหวตผิด: สายลับ +2 ถ้าทายถูก, +1 ถ้าทายผิด · จับได้: สายลับ +1 ถ้าทายถูก, ไม่งั้นคนที่โหวตถูกคนละ +1
+ */
 function finishGuess(state: SpyfallState, guess: string | null): SpyfallState {
   const guessed = { ...state, spyGuess: guess };
   const correct = guess === state.locationId;
   const caught = state.accused === state.spy;
-  if (correct) {
-    return endRound(
-      guessed,
-      'spy',
-      [state.spy],
-      caught ? 'caught-spy-guessed' : 'missed-spy-guessed',
-    );
+  if (!caught) {
+    return correct
+      ? endRound(guessed, 'spy', [state.spy], 'missed-spy-guessed', 2)
+      : endRound(guessed, 'spy', [state.spy], 'missed');
   }
-  if (!caught) return endRound(guessed, null, [], 'missed');
+  if (correct) return endRound(guessed, 'spy', [state.spy], 'caught-spy-guessed');
   // คนที่โหวตถูก = เลือกสายลับในรอบโหวตที่ตัดสินผล
   const deciding = state.voteRounds.at(-1);
   const voters = state.players.filter((p) => deciding?.ballots[p] === state.spy);

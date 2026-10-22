@@ -205,8 +205,14 @@ describe('เวลา (lazy deadline)', () => {
   it('หลาย deadline ที่เลยมาแล้วถูกเรียกต่อกันใน request เดียว', async () => {
     const r = await started(3);
     r.advance(60 * 60_000);
-    // ถามตอบ → โหวต (ไม่มีใครโหวต) → สายลับไม่ทาย = โหวตผิด + ทายผิด
-    expect(view(await r.poll(0)).result).toEqual({ winner: null, winners: [], reason: 'missed' });
+    // ถามตอบ → โหวต (ไม่มีใครโหวต) → สายลับไม่ทาย = โหวตผิด + ทายผิด → สายลับ +1
+    const end = view(await r.poll(0));
+    expect(end.result).toEqual({
+      winner: 'spy',
+      winners: [end.reveal?.spy],
+      reason: 'missed',
+      points: 1,
+    });
   });
 });
 

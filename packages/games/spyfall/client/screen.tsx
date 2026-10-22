@@ -73,6 +73,23 @@ export function SpyfallScreen(props: GameScreenProps) {
   const ctx: Ctx = { view, m, locale: props.locale, deck, nameOf, send, busy };
   const lastRound = view.voteRounds.at(-1);
 
+  // สถานที่ที่ขีดฆ่าไว้ (เห็นแค่เครื่องนี้) — อยู่ที่นี่เพราะตอนสายลับทาย รายการย้ายไปอยู่ในแผงทาย
+  // ขีดของรอบก่อนล้างเองเมื่อเริ่มรอบใหม่
+  const [crossedIn, setCrossedIn] = useState<{ round: number; ids: ReadonlySet<string> }>({
+    round: view.round,
+    ids: new Set(),
+  });
+  const crossed = crossedIn.round === view.round ? crossedIn.ids : new Set<string>();
+  const toggleCrossed = (id: string) =>
+    setCrossedIn((prev) => {
+      const next = new Set(prev.round === view.round ? prev.ids : []);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { round: view.round, ids: next };
+    });
+  const locations = { crossed, onToggle: toggleCrossed };
+  const spyGuessing = canGuess(view);
+
   return (
     <div data-phase={view.phase}>
       <Backdrop />
@@ -101,9 +118,15 @@ export function SpyfallScreen(props: GameScreenProps) {
                 chosen={view.accused}
               />
             )}
-            {view.phase === 'guessing' && <GuessPanel ctx={ctx} />}
+            {view.phase === 'guessing' && <GuessPanel ctx={ctx} locations={locations} />}
             <PlayerList ctx={ctx} players={props.players} />
-            <LocationList ctx={ctx} />
+            {/* สายลับทายจากรายการเดียวกันในแผงทาย (ที่ขีดไว้ยังอยู่) จึงไม่แสดงซ้ำตรงนี้ */}
+            {!spyGuessing && (
+              <Dossier label={m.locations.title}>
+                <p className="mb-3 text-xs text-muted-foreground">{m.locations.help}</p>
+                <LocationList ctx={ctx} {...locations} />
+              </Dossier>
+            )}
           </>
         )}
 
@@ -393,10 +416,17 @@ function Ballots({ ctx, round }: { ctx: Ctx; round: VoteRound }) {
   );
 }
 
-/** ช่วงสายลับทาย: สายลับเลือกสถานที่ คนอื่นรอ */
-function GuessPanel({ ctx }: { ctx: Ctx }) {
+interface Locations {
+  crossed: ReadonlySet<string>;
+  onToggle(id: string): void;
+}
+
+/** ช่วงสายลับทาย: สายลับเลือกจากรายการสถานที่เดิม (ที่ขีดไว้ยังอยู่) คนอื่นรอ */
+function GuessPanel({ ctx, locations }: { ctx: Ctx; locations: Locations }) {
   const { view, m } = ctx;
   const [choice, setChoice] = useState<string | null>(null);
+  // แตะ = เลือกทาย, โหมดขีดฆ่า = ยังขีด/ลบขีดต่อได้ก่อนตัดสินใจ
+  const [crossing, setCrossing] = useState(false);
 
   if (!canGuess(view)) {
     return (
@@ -423,19 +453,27 @@ function GuessPanel({ ctx }: { ctx: Ctx }) {
           onCancel={() => setChoice(null)}
         />
       ) : (
-        <div className="grid grid-cols-2 gap-2">
-          {ctx.deck.map((l) => (
+        <>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {crossing ? m.guess.crossingHelp : m.guess.pickHelp}
+            </p>
             <Button
-              key={l.id}
-              variant="outline"
               size="sm"
-              className="h-auto min-h-11 py-2"
-              onClick={() => setChoice(l.id)}
+              variant={crossing ? 'secondary' : 'outline'}
+              aria-pressed={crossing}
+              className="shrink-0"
+              onClick={() => setCrossing((c) => !c)}
             >
-              {l.name}
+              {crossing ? m.guess.doneCrossing : m.guess.cross}
             </Button>
-          ))}
-        </div>
+          </div>
+          <LocationList
+            ctx={ctx}
+            crossed={locations.crossed}
+            onToggle={crossing ? locations.onToggle : setChoice}
+          />
+        </>
       )}
     </Dossier>
   );
@@ -511,41 +549,33 @@ function RoleCard({ ctx }: { ctx: Ctx }) {
   );
 }
 
-function LocationList({ ctx }: { ctx: Ctx }) {
-  const { m } = ctx;
-  // component นี้ถูกถอดออกตอน reveal ที่ขีดไว้จึงล้างเองทุกรอบใหม่
-  const [crossed, setCrossed] = useState<Set<string>>(new Set());
-
-  const toggle = (id: string) =>
-    setCrossed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
+/** รายชื่อสถานที่ทั้งหมด ที่ขีดฆ่าไว้แสดงเป็นเส้นขีด — แตะแล้วทำอะไรขึ้นกับคนเรียก */
+function LocationList({
+  ctx,
+  crossed,
+  onToggle,
+}: {
+  ctx: Ctx;
+  crossed: ReadonlySet<string>;
+  onToggle(id: string): void;
+}) {
   return (
-    <Dossier label={m.locations.title}>
-      <p className="mb-3 text-xs text-muted-foreground">{m.locations.help}</p>
-      <ul className="grid grid-cols-2 gap-1.5">
-        {ctx.deck.map((l) => (
-          <li key={l.id}>
-            <button
-              type="button"
-              onClick={() => toggle(l.id)}
-              className={cn(
-                'min-h-10 w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors',
-                crossed.has(l.id)
-                  ? 'bg-muted text-muted-foreground line-through'
-                  : 'bg-secondary/50',
-              )}
-            >
-              {l.name}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </Dossier>
+    <ul className="grid grid-cols-2 gap-1.5" data-testid="location-list">
+      {ctx.deck.map((l) => (
+        <li key={l.id}>
+          <button
+            type="button"
+            onClick={() => onToggle(l.id)}
+            className={cn(
+              'min-h-10 w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors',
+              crossed.has(l.id) ? 'bg-muted text-muted-foreground line-through' : 'bg-secondary/50',
+            )}
+          >
+            {l.name}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -633,9 +663,9 @@ function Reveal({ ctx, isHost }: { ctx: Ctx; isHost: boolean }) {
             >
               {title}
             </p>
-            {result.winner === 'voters' && result.winners.length > 0 && (
+            {result.winners.length > 0 && (
               <p data-testid="reveal-winners" className="mt-2 font-semibold">
-                {m.reveal.winners(result.winners.map(ctx.nameOf).join(', '))}
+                {m.reveal.winners(result.winners.map(ctx.nameOf).join(', '), result.points ?? 1)}
               </p>
             )}
             <p className="mt-2 text-muted-foreground">{m.reveal.reasons[result.reason]}</p>
@@ -687,7 +717,9 @@ function Reveal({ ctx, isHost }: { ctx: Ctx; isHost: boolean }) {
                           ? m.reveal.spyRole
                           : roleName(ctx, reveal.locationId, reveal.roles[id] ?? '')}
                       </span>
-                      {result.winners.includes(id) && <Badge variant="success">+1</Badge>}
+                      {result.winners.includes(id) && (
+                        <Badge variant="success">+{result.points ?? 1}</Badge>
+                      )}
                     </li>
                   );
                 })}
@@ -729,6 +761,7 @@ function Reveal({ ctx, isHost }: { ctx: Ctx; isHost: boolean }) {
 function Scoreboard({ ctx }: { ctx: Ctx }) {
   const { view, m } = ctx;
   const winners = view.result?.winners ?? [];
+  const gained = view.result?.points ?? 1;
   const champs = view.matchOver ? champions(view) : [];
   return (
     <Dossier
@@ -758,7 +791,7 @@ function Scoreboard({ ctx }: { ctx: Ctx }) {
             <span className={cn('min-w-0 flex-1 truncate', id === view.me && 'text-primary')}>
               {ctx.nameOf(id)}
             </span>
-            {winners.includes(id) && <span className="text-xs text-success">+1</span>}
+            {winners.includes(id) && <span className="text-xs text-success">+{gained}</span>}
             <span className="font-mono text-sm font-semibold">{m.reveal.points(score)}</span>
           </li>
         ))}
