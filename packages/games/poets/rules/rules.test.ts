@@ -1,0 +1,215 @@
+import { describe, expect, it } from 'vitest';
+import { createRng, startGame } from '@batonboard/engine';
+import type { PlayerId } from '@batonboard/engine';
+import { createPoets } from './game';
+import { pairings } from './deal';
+import { PoetsError, VOTE_MS } from './constants';
+import {
+  act,
+  HOST,
+  players,
+  poets,
+  readAll,
+  start,
+  T0,
+  testFigures,
+  timeUp,
+  tryAct,
+  villagers,
+  voteAll,
+  voteOut,
+} from './fixtures';
+
+const figureOf = (lineId: string) =>
+  testFigures.find((f) => f.sentences.some((s) => s.id === lineId))?.id;
+
+describe('แจกประโยค', () => {
+  it('สายลับ 1 คน คนอื่นได้ประโยคโวหารเดียวกันคนละประโยค สายลับได้โวหารอื่น', () => {
+    for (let seed = 0; seed < 50; seed++) {
+      const n = 3 + (seed % 4);
+      const s = start(n, seed);
+      expect(s.players).toContain(s.spy);
+      expect(s.figure).not.toBe(s.spyFigure);
+      const villageLines = villagers(s).map((p) => s.lines[p] as string);
+      expect(new Set(villageLines).size).toBe(n - 1);
+      for (const line of villageLines) expect(figureOf(line)).toBe(s.figure);
+      expect(figureOf(s.lines[s.spy] as string)).toBe(s.spyFigure);
+      expect([...s.order].sort()).toEqual([...s.players].sort());
+      expect(s.phase).toBe('reading');
+      expect(s.deadline).toBeNull();
+    }
+  });
+
+  it('seed เดียวกันได้ผลเหมือนเดิม', () => {
+    expect(start(5, 42)).toEqual(start(5, 42));
+    expect(start(5, 42)).not.toEqual(start(5, 43));
+  });
+
+  it('ไม่ใช้ประโยคที่เข้าได้ทั้งสองฝั่ง', () => {
+    const tricky = createPoets({
+      setId: 'tricky',
+      figures: [
+        {
+          id: 'fig-a',
+          sentences: [
+            ...Array.from({ length: 5 }, (_, i) => ({ id: `a-${i}`, text: `a ${i}` })),
+            { id: 'a-both', text: 'a and b', also: ['fig-b'] },
+          ],
+        },
+        { id: 'fig-b', sentences: [{ id: 'b-0', text: 'b 0' }] },
+      ],
+    });
+    for (let seed = 0; seed < 30; seed++) {
+      const res = startGame(tricky, players(6), undefined, createRng(seed), T0);
+      if (!res.ok) throw new Error(res.error);
+      expect(Object.values(res.value.lines)).not.toContain('a-both');
+    }
+  });
+
+  it('แจกได้เฉพาะคู่โวหารที่ประโยคพอ', () => {
+    const figures = [
+      { id: 'fig-a', sentences: Array.from({ length: 5 }, (_, i) => ({ id: `a-${i}`, text: '' })) },
+      { id: 'fig-b', sentences: [{ id: 'b-0', text: '' }] },
+    ];
+    // หมู่บ้าน b มีประโยคไม่พอ → แจกได้แค่ทางเดียว
+    expect(pairings(figures, 6).map((p) => [p.figure, p.spyFigure])).toEqual([['fig-a', 'fig-b']]);
+    expect(pairings(figures, 2)).toHaveLength(2);
+  });
+
+  it('config ที่แจกให้ 6 คนไม่ได้ถูกปฏิเสธ', () => {
+    expect(() =>
+      createPoets({
+        setId: 'small',
+        figures: [
+          { id: 'x', sentences: [{ id: 'x1', text: 'x' }] },
+          { id: 'y', sentences: [{ id: 'y1', text: 'y' }] },
+        ],
+      }),
+    ).toThrow();
+  });
+
+  it('รอบใหม่ไม่ใช้ประโยคซ้ำจนกว่าจะหมด และโวหารหมู่บ้านไม่ซ้ำรอบก่อน', () => {
+    let s = start(3, 7);
+    const seen = new Set(Object.values(s.lines));
+    for (let round = 0; round < 5; round++) {
+      const before = s.figure;
+      s = act(voteOut(s, s.spy), HOST, { type: 'NEXT_ROUND' }, T0, round + 10);
+      expect(s.figure).not.toBe(before);
+      for (const line of Object.values(s.lines)) {
+        expect(seen.has(line)).toBe(false);
+        seen.add(line);
+      }
+    }
+  });
+});
+
+describe('ช่วงอ่าน', () => {
+  it('อ่านตามลำดับ คนอื่นกดแทนไม่ได้ ยกเว้น host ข้ามให้', () => {
+    const s = start(4, 1);
+    const reader = s.order[0] as PlayerId;
+    const other = s.order.find((p) => p !== reader && p !== HOST) as PlayerId;
+    expect(tryAct(s, other, { type: 'READ_DONE' })).toBe(PoetsError.NotReader);
+    expect(act(s, reader, { type: 'READ_DONE' }).readCount).toBe(1);
+    expect(act(s, HOST, { type: 'READ_DONE' }).readCount).toBe(1);
+  });
+
+  it('อ่านครบแล้วเข้าช่วงคุยพร้อมเวลา แล้วหมดเวลาเปิดโหวต', () => {
+    const s = readAll(start(4, 1, { discussionMs: 30_000 }));
+    expect(s.phase).toBe('discussion');
+    expect(s.deadline).toBe(T0 + 30_000);
+    const voting = timeUp(s);
+    expect(voting.phase).toBe('voting');
+    expect(voting.voting?.candidates).toEqual(s.players);
+  });
+
+  it('เริ่มโหวตได้เฉพาะ host ช่วงคุย', () => {
+    const reading = start(4, 1);
+    expect(tryAct(reading, HOST, { type: 'START_VOTE' })).toBe(PoetsError.WrongPhase);
+    const s = readAll(reading);
+    expect(tryAct(s, 'p-bob', { type: 'START_VOTE' })).toBe(PoetsError.NotHost);
+    expect(tryAct(s, HOST, { type: 'START_VOTE' })).toBeNull();
+  });
+
+  it('คนที่ถึงตาอ่านออกจากห้อง = ข้ามไปคนถัดไป', () => {
+    const s = start(5, 4);
+    const reader = s.order[0] as PlayerId;
+    const left = poets.onPlayerLeave?.(s, reader, T0) as typeof s;
+    if (reader === s.spy) {
+      expect(left.phase).toBe('reveal');
+    } else {
+      expect(left.readCount).toBe(1);
+      expect(left.phase).toBe('reading');
+    }
+  });
+});
+
+describe('โหวตและผล', () => {
+  it('โหวตถูก = หมู่บ้านปลอดภัย กวีทุกคนที่ไม่ใช่สายลับ +1', () => {
+    const s = voteOut(start(4, 1), start(4, 1).spy);
+    expect(s.phase).toBe('reveal');
+    expect(s.result).toMatchObject({ winner: 'village', reason: 'caught', points: 1 });
+    expect([...(s.result?.winners ?? [])].sort()).toEqual(villagers(s).sort());
+    for (const p of villagers(s)) expect(s.scores[p]).toBe(1);
+    expect(s.scores[s.spy]).toBe(0);
+  });
+
+  it('โหวตผิด = สายลับ +1', () => {
+    const base = start(4, 1);
+    const s = voteOut(base, villagers(base)[0] as PlayerId);
+    expect(s.result).toMatchObject({ winner: 'spy', winners: [base.spy], reason: 'missed' });
+  });
+
+  it('โหวตคนละครั้ง ห้ามโหวตตัวเอง', () => {
+    const s = act(readAll(start(4, 1)), HOST, { type: 'START_VOTE' });
+    expect(tryAct(s, 'p-bob', { type: 'VOTE', target: 'p-bob' })).toBe(PoetsError.CannotVoteSelf);
+    const voted = act(s, 'p-bob', { type: 'VOTE', target: 'p-cat' });
+    expect(tryAct(voted, 'p-bob', { type: 'VOTE', target: 'p-dan' })).toBe(PoetsError.AlreadyVoted);
+    expect(tryAct(voted, 'p-cat', { type: 'VOTE', target: 'p-zzz' })).toBe(
+      PoetsError.NotACandidate,
+    );
+  });
+
+  it('เสมอ = โหวตใหม่เฉพาะคนที่เสมอ เสมออีก = สายลับชนะ', () => {
+    const s = act(readAll(start(4, 1)), HOST, { type: 'START_VOTE' });
+    const ring = s.players;
+    const next = (p: PlayerId) => ring[(ring.indexOf(p) + 1) % ring.length] as PlayerId;
+    const revote = voteAll(s, next);
+    expect(revote.phase).toBe('voting');
+    expect(revote.voting?.candidates).toEqual(ring);
+    const done = voteAll(revote, next);
+    expect(done.accused).toBeNull();
+    expect(done.result?.reason).toBe('missed');
+  });
+
+  it('หมดเวลาโหวตไม่มีใครโหวต = ไม่มีใครถูกเลือก', () => {
+    const s = act(readAll(start(3, 1)), HOST, { type: 'START_VOTE' }, T0);
+    expect(s.deadline).toBe(T0 + VOTE_MS);
+    const done = timeUp(s);
+    expect(done.accused).toBeNull();
+    expect(done.result?.winner).toBe('spy');
+  });
+
+  it('สายลับออกกลางเกม = หมู่บ้านชนะ, คนไม่พอ = ไม่มีใครชนะ', () => {
+    const s = start(3, 1);
+    expect(poets.onPlayerLeave?.(s, s.spy, T0).result?.reason).toBe('spy-left');
+    const v = villagers(s)[0] as PlayerId;
+    expect(poets.onPlayerLeave?.(s, v, T0).result?.reason).toBe('not-enough-players');
+  });
+
+  it('แมตช์หลายรอบ: ครบแล้ว NEXT_ROUND เริ่มแมตช์ใหม่ ล้างคะแนน', () => {
+    let s = start(3, 1, { discussionMs: 60_000, rounds: 2 });
+    s = act(voteOut(s, s.spy), HOST, { type: 'NEXT_ROUND' });
+    expect(s.round).toBe(2);
+    s = voteOut(s, s.spy);
+    expect(poets.playerView(s, HOST).matchOver).toBe(true);
+    s = act(s, HOST, { type: 'NEXT_ROUND' });
+    expect(s.round).toBe(1);
+    expect(Object.values(s.scores).every((n) => n === 0)).toBe(true);
+    expect(tryAct(s, 'p-bob', { type: 'NEXT_ROUND' })).toBe(PoetsError.WrongPhase);
+  });
+
+  it('ตั้งค่าผิดถูกปฏิเสธ', () => {
+    const res = startGame(poets, players(4), { discussionMs: 1 }, createRng(1), T0);
+    expect(res.ok).toBe(false);
+  });
+});

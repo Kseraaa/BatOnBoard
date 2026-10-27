@@ -12,6 +12,7 @@
   "dependencies": {
     "@batonboard/boss": "workspace:*",
     "@batonboard/engine": "workspace:*",
+    "@batonboard/poets": "workspace:*",
     "@batonboard/protocol": "workspace:*",
     "@batonboard/rooms": "workspace:*",
     "@batonboard/spyfall": "workspace:*",

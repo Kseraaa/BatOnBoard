@@ -8,6 +8,7 @@ const config: NextConfig = {
   transpilePackages: [
     '@batonboard/boss',
     '@batonboard/engine',
+    '@batonboard/poets',
     '@batonboard/protocol',
     '@batonboard/spyfall',
     '@batonboard/ui',

@@ -4,6 +4,7 @@ import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from '@batonboard/protocol';
 import { MemoryRoomStore, ROOM_TTL_SECONDS, RoomService } from '@batonboard/rooms';
 import type { IdSource, RoomStore } from '@batonboard/rooms';
 import { boss } from '@batonboard/boss';
+import { poets } from '@batonboard/poets';
 import { spyfall } from '@batonboard/spyfall';
 import { UpstashRoomStore } from './upstash-store';
 
@@ -15,6 +16,7 @@ function createGameRegistry() {
   const registry = createRegistry();
   registry.register(spyfall);
   registry.register(boss);
+  registry.register(poets);
   return registry;
 }
 

@@ -82,6 +82,28 @@ export default tseslint.config(
     },
   },
 
+  // กฎสถาปัตยกรรมข้อ 2: ประโยคของเมืองแห่งกวีบอกโวหารได้ ต้องอยู่ฝั่ง server เท่านั้น
+  {
+    files: ['packages/games/poets/client/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: ['..', '../index', '@batonboard/poets'].map((name) => ({
+            name,
+            message: 'client ห้าม import ประโยค (รู้ได้จาก bundle ว่าประโยคไหนเป็นโวหารอะไร)',
+          })),
+          patterns: [
+            {
+              group: ['**/data/sentences*'],
+              message: 'client ห้าม import ประโยค (รู้ได้จาก bundle ว่าประโยคไหนเป็นโวหารอะไร)',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // กฎสถาปัตยกรรมข้อ 4: แพลตฟอร์มไม่รู้จักกติกาเกม
   {
     files: ['packages/engine/**/*.ts', 'packages/rooms/src/**/*.ts'],
@@ -93,7 +115,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@batonboard/spyfall*', '@batonboard/boss*'],
+              group: ['@batonboard/spyfall*', '@batonboard/boss*', '@batonboard/poets*'],
               message: 'engine และ rooms ห้ามรู้จักเกมใดเกมหนึ่ง',
             },
           ],

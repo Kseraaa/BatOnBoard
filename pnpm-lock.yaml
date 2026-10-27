@@ -47,6 +47,9 @@ importers:
       '@batonboard/engine':
         specifier: workspace:*
         version: link:../../packages/engine
+      '@batonboard/poets':
+        specifier: workspace:*
+        version: link:../../packages/games/poets
       '@batonboard/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -139,6 +142,25 @@ importers:
       react-dom:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
+
+  packages/games/poets:
+    dependencies:
+      '@batonboard/engine':
+        specifier: workspace:*
+        version: link:../../engine
+      '@batonboard/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
 
   packages/games/spyfall:
     dependencies:
