@@ -45,6 +45,7 @@ export const en: Messages = {
     share: 'Invite friends',
     shareText: (game) => `Let's play ${game}!`,
     players: (n, max) => `Players ${n}/${max}`,
+    moderator: 'game runner',
     host: 'host',
     you: 'you',
     offline: 'offline',

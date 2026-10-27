@@ -6,6 +6,7 @@ import {
   fireDeadline,
   getDeadline,
   removePlayer,
+  roomCapacity,
   startGame,
 } from '@batonboard/engine';
 import type { AnyGameDefinition, GameRegistry, PlayerId, Rng } from '@batonboard/engine';
@@ -171,7 +172,7 @@ export function joinRoom(
 
 /** ห้องเต็มหรือชื่อซ้ำ (ไม่สนตัวพิมพ์) */
 function checkRoomFor(game: AnyGameDefinition, room: Room, name: string): string | null {
-  if (room.players.length >= game.maxPlayers) return RoomError.RoomFull;
+  if (room.players.length >= roomCapacity(game, room.options)) return RoomError.RoomFull;
   const lower = name.toLocaleLowerCase();
   return room.players.some((p) => p.name.toLocaleLowerCase() === lower)
     ? RoomError.NameTaken
@@ -350,6 +351,7 @@ export function start(env: RoomEnv, room: Room, by: PlayerId): Ack<Room> {
     room.options,
     rngFor(room),
     env.now,
+    room.hostId,
   );
   if (!res.ok) return fail(res.error);
   return ok(bump(env, room, { status: 'playing', state: res.value }));

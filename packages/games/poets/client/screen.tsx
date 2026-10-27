@@ -76,7 +76,7 @@ export function PoetsScreen(props: GameScreenProps) {
           <Reveal ctx={ctx} isHost={isHost} />
         ) : (
           <>
-            <PoetCard ctx={ctx} />
+            {view.you.role === 'moderator' ? <ModeratorPanel ctx={ctx} /> : <PoetCard ctx={ctx} />}
             {view.phase === 'reading' && (
               <ReadingPanel ctx={ctx} players={props.players} isHost={isHost} />
             )}
@@ -167,9 +167,60 @@ function Header({ ctx, serverOffset }: { ctx: Ctx; serverOffset: number }) {
   );
 }
 
+/** host ที่ดำเนินเกม: เห็นไพ่ทุกคน ซ่อนไว้ก่อนเพราะจอนี้อาจขึ้นโปรเจกเตอร์ */
+function ModeratorPanel({ ctx }: { ctx: Ctx }) {
+  const { view, m } = ctx;
+  const [open, setOpen] = useState(false);
+  if (view.you.role !== 'moderator') return null;
+  const reader = currentReader(view);
+  return (
+    <Sheet label={m.moderator.title} tone="border-primary" data-testid="moderator-panel">
+      <p className="mb-3 text-xs text-muted-foreground">{m.moderator.help}</p>
+      {open ? (
+        <ol className="divide-y divide-border">
+          {view.you.cards.map((card) => (
+            <li
+              key={card.player}
+              data-testid="moderator-card"
+              data-spy={card.spy}
+              className={cn(
+                'flex items-start gap-2 rounded-xl px-2 py-2.5',
+                card.spy && 'bg-destructive/10',
+                card.player === reader && 'ring-2 ring-primary',
+              )}
+            >
+              <PixelAvatar name={ctx.nameOf(card.player)} className="size-8 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+                  <span className="truncate">{ctx.nameOf(card.player)}</span>
+                  <Badge variant={card.spy ? 'danger' : 'secondary'}>
+                    {ctx.figureName(card.figure)}
+                  </Badge>
+                  {card.spy && <Badge variant="danger">{m.moderator.spy}</Badge>}
+                </p>
+                <p className="leading-relaxed">“{card.text}”</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="py-2 text-center text-sm text-muted-foreground">{m.moderator.hidden}</p>
+      )}
+      <Button
+        block
+        variant={open ? 'outline' : 'secondary'}
+        className="mt-3"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? m.moderator.hide : m.moderator.show}
+      </Button>
+    </Sheet>
+  );
+}
+
 function PoetCard({ ctx }: { ctx: Ctx }) {
   const { view, m } = ctx;
-  if (view.you.role === 'spectator') {
+  if (view.you.role !== 'poet') {
     return <Card className="text-center text-muted-foreground">{m.card.spectator}</Card>;
   }
   const you = view.you;
@@ -281,7 +332,19 @@ function ReadingPanel({
         </div>
       ) : (
         isHost &&
-        reader && (
+        reader &&
+        (view.you.role === 'moderator' ? (
+          // ผู้ดำเนินเกมกดให้ทีละคนหลังนักเรียนอ่านจบ
+          <Button
+            block
+            size="lg"
+            className="mt-4"
+            disabled={ctx.busy}
+            onClick={() => void ctx.send({ type: 'READ_DONE' })}
+          >
+            {m.moderator.doneFor(ctx.nameOf(reader))}
+          </Button>
+        ) : (
           <Button
             block
             variant="outline"
@@ -291,7 +354,7 @@ function ReadingPanel({
           >
             {m.reading.skip(ctx.nameOf(reader))}
           </Button>
-        )
+        ))
       )}
     </Sheet>
   );
@@ -403,7 +466,9 @@ function VotePanel({ ctx }: { ctx: Ctx }) {
         )
       ) : (
         view.you.role !== 'spectator' && (
-          <p className="py-2 text-center text-muted-foreground">{m.vote.noChoice}</p>
+          <p className="py-2 text-center text-muted-foreground">
+            {view.you.role === 'moderator' ? m.moderator.noVote : m.vote.noChoice}
+          </p>
         )
       )}
     </Sheet>

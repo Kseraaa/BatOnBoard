@@ -38,6 +38,7 @@ const optionsSchema: z.ZodType<PoetsOptions> = z.object({
   discussionMs: z.number().int().min(MIN_DISCUSSION_MS).max(MAX_DISCUSSION_MS),
   rounds: z.number().int().min(MIN_MATCH_ROUNDS).max(MAX_MATCH_ROUNDS).optional(),
   hideFigure: z.boolean().optional(),
+  hostPlays: z.boolean().optional(),
 });
 
 function assertValidConfig({ figures }: PoetsConfig): void {
@@ -67,6 +68,7 @@ interface Match {
   round: number;
   rounds: number | null;
   used: string[];
+  moderator: PlayerId | null;
 }
 
 function newRound(
@@ -97,6 +99,7 @@ function newRound(
     round: match.round,
     rounds: match.rounds,
     used: dealt.used,
+    moderator: match.moderator,
   };
 }
 
@@ -194,8 +197,10 @@ export function createPoets(
     actionSchema,
     optionsSchema,
     defaultOptions: { discussionMs: DEFAULT_DISCUSSION_MS },
+    // ห้องเรียน: ครูเปิดห้องขึ้นจอ นักเรียนเล่น — host เล่นด้วยต้องเปิดเอง
+    hostModerates: (options) => options.hostPlays !== true,
 
-    setup(players, options, rng) {
+    setup(players, options, rng, _now, ctx) {
       const match: Match = {
         discussionMs: options.discussionMs,
         hideFigure: options.hideFigure ?? false,
@@ -203,12 +208,15 @@ export function createPoets(
         round: 1,
         rounds: options.rounds ?? null,
         used: [],
+        moderator: ctx?.moderator ?? null,
       };
       return newRound(config, players, rng, match, null);
     },
 
     validate(state, action, by, ctx) {
-      if (!state.players.includes(by)) return PoetsError.NotAPlayer;
+      // host ที่ไม่ได้เล่น (ผู้ดำเนินเกม) ทำ action ของ host ได้ แต่โหวตไม่ได้
+      const hostOnly = by === ctx.hostId && action.type !== 'VOTE';
+      if (!state.players.includes(by) && !hostOnly) return PoetsError.NotAPlayer;
 
       switch (action.type) {
         case 'READ_DONE':
@@ -267,6 +275,7 @@ export function createPoets(
             round: fresh ? 1 : state.round + 1,
             rounds: state.rounds,
             used: fresh ? [] : state.used,
+            moderator: state.moderator ?? null,
           };
           return newRound(config, state.players, rng, match, state.figure);
         }
@@ -278,13 +287,24 @@ export function createPoets(
       const line = state.lines[viewer];
       const voting = state.voting;
       const figure = viewer === state.spy ? state.spyFigure : state.figure;
+      const you: PoetsView['you'] =
+        viewer === state.moderator
+          ? {
+              role: 'moderator',
+              cards: state.order.map((p) => ({
+                player: p,
+                text: textOf(state.lines[p]),
+                figure: p === state.spy ? state.spyFigure : state.figure,
+                spy: p === state.spy,
+              })),
+            }
+          : line !== undefined && state.players.includes(viewer)
+            ? { role: 'poet', text: textOf(line), figure: state.hideFigure ? null : figure }
+            : { role: 'spectator' };
       return {
         phase: state.phase,
         me: viewer,
-        you:
-          line !== undefined && state.players.includes(viewer)
-            ? { role: 'poet', text: textOf(line), figure: state.hideFigure ? null : figure }
-            : { role: 'spectator' },
+        you,
         setId: config.setId,
         players: state.players,
         order: state.order,

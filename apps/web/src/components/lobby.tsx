@@ -31,9 +31,12 @@ export function Lobby({ room, me, game, onLeave }: LobbyProps) {
   const isHost = room.hostId === me;
   const minPlayers = game?.minPlayers ?? 1;
   const maxPlayers = game?.maxPlayers ?? room.players.length;
-  const enough = room.players.length >= minPlayers;
+  // host ที่ดำเนินเกม (ไม่ได้เล่น) ไม่นับเป็นผู้เล่น
+  const moderated = game?.hostModerates?.(room.options) === true;
+  const playing = room.players.length - (moderated ? 1 : 0);
+  const enough = playing >= minPlayers;
   const gameName = game?.displayName[locale] ?? room.gameId;
-  const canAddBot = isHost && showBots && room.botsAllowed && room.players.length < maxPlayers;
+  const canAddBot = isHost && showBots && room.botsAllowed && playing < maxPlayers;
 
   function addBot() {
     const taken = new Set(room.players.map((p) => p.name.toLocaleLowerCase()));
@@ -81,9 +84,7 @@ export function Lobby({ room, me, game, onLeave }: LobbyProps) {
       </header>
 
       <Card>
-        <CardTitle className="mb-3 text-base">
-          {t.room.players(room.players.length, maxPlayers)}
-        </CardTitle>
+        <CardTitle className="mb-3 text-base">{t.room.players(playing, maxPlayers)}</CardTitle>
         <ul className="divide-y divide-border">
           {room.players.map((p) => (
             <li key={p.id} className="flex min-h-12 items-center gap-2 py-2">
@@ -96,7 +97,9 @@ export function Lobby({ room, me, game, onLeave }: LobbyProps) {
               </span>
               <span className="flex-1 truncate font-semibold">{p.name}</span>
               {p.bot && <Badge variant="outline">🤖 {t.room.bot}</Badge>}
-              {p.id === room.hostId && <Badge variant="secondary">{t.room.host}</Badge>}
+              {p.id === room.hostId && (
+                <Badge variant="secondary">{moderated ? t.room.moderator : t.room.host}</Badge>
+              )}
               {p.id === me && <Badge variant="outline">{t.room.you}</Badge>}
               {!p.online && <Badge variant="outline">{t.room.offline}</Badge>}
               {isHost && p.id !== me && (

@@ -5,6 +5,7 @@ import {
   fireDeadline,
   getDeadline,
   removePlayer,
+  roomCapacity,
   startGame,
   viewsFor,
 } from './runner';
@@ -49,6 +50,25 @@ describe('startGame', () => {
       ok: false,
       error: EngineError.DuplicatePlayers,
     });
+  });
+
+  it('hostModerates: host ไม่ได้เล่น นับผู้เล่นโดยไม่รวม host และได้ที่นั่งเพิ่ม', () => {
+    const moderated = { ...secretGame, hostModerates: () => true };
+    const setup = vi.spyOn(moderated, 'setup');
+    const five = ['ann', 'b', 'c', 'd', 'e'];
+    const res = startGame(moderated, five, undefined, createRng(1), T0, 'ann');
+    expect(res.ok && res.value.players).toEqual(['b', 'c', 'd', 'e']);
+    expect(setup.mock.calls[0]?.[4]).toEqual({ moderator: 'ann' });
+    expect(startGame(moderated, ['ann', 'b'], undefined, createRng(1), T0, 'ann')).toEqual({
+      ok: false,
+      error: EngineError.TooFewPlayers,
+    });
+    // ไม่ส่ง host หรือเกมไม่ได้ตั้ง hostModerates = host เล่นด้วยเหมือนเดิม
+    expect(startGame(moderated, five, undefined, createRng(1), T0).ok).toBe(false);
+    const plain = startGame(secretGame, ['ann', 'b', 'c'], undefined, createRng(1), T0, 'ann');
+    expect(plain.ok && plain.value.players).toEqual(['ann', 'b', 'c']);
+    expect(roomCapacity(moderated, undefined)).toBe(5);
+    expect(roomCapacity(secretGame, undefined)).toBe(4);
   });
 
   it('seed เดิมให้ state เดิม', () => {

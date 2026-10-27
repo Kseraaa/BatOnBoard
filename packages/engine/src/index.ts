@@ -5,6 +5,7 @@ export type {
   PlayerId,
   Result,
   Rng,
+  SetupContext,
 } from './types';
 export { EngineError } from './types';
 export { createRng } from './rng';
@@ -16,6 +17,7 @@ export {
   fireDeadline,
   getDeadline,
   removePlayer,
+  roomCapacity,
   startGame,
   viewsFor,
 } from './runner';

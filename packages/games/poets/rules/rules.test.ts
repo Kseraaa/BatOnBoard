@@ -213,3 +213,58 @@ describe('โหวตและผล', () => {
     expect(res.ok).toBe(false);
   });
 });
+
+describe('host เป็นผู้ดำเนินเกม (ค่าเริ่มต้น)', () => {
+  const kids = ['p-ann', 'p-bob', 'p-cat', 'p-dan', 'p-eve', 'p-fay', 'p-gus'];
+  const begin = (options?: unknown, list = kids) => {
+    const res = startGame(poets, list, options, createRng(3), T0, HOST);
+    if (!res.ok) throw new Error(res.error);
+    return res.value;
+  };
+
+  it('host ไม่ได้ไพ่ ผู้เล่น 6 + host 1', () => {
+    const s = begin();
+    expect(s.players).toEqual(kids.slice(1));
+    expect(s.moderator).toBe(HOST);
+    expect(s.lines[HOST]).toBeUndefined();
+    expect(startGame(poets, kids.slice(0, 3), undefined, createRng(1), T0, HOST)).toEqual({
+      ok: false,
+      error: 'too-few-players',
+    });
+  });
+
+  it('host เห็นไพ่ทุกคนและรู้ว่าใครเป็นสายลับ ผู้เล่นไม่เห็นไพ่ของ host', () => {
+    const s = begin();
+    const you = poets.playerView(s, HOST).you;
+    if (you.role !== 'moderator') throw new Error(you.role);
+    expect(you.cards.map((c) => c.player)).toEqual(s.order);
+    expect(you.cards.filter((c) => c.spy).map((c) => c.player)).toEqual([s.spy]);
+    for (const c of you.cards) {
+      expect(c.figure).toBe(c.spy ? s.spyFigure : s.figure);
+      expect(c.text).not.toBe('');
+    }
+    for (const p of s.players) expect(poets.playerView(s, p).you.role).toBe('poet');
+  });
+
+  it('host ข้ามคนอ่าน เริ่มโหวต และเริ่มรอบใหม่ได้ แต่โหวตไม่ได้', () => {
+    let s = begin();
+    s = act(s, HOST, { type: 'READ_DONE' });
+    expect(s.readCount).toBe(1);
+    s = act(readAll(s), HOST, { type: 'START_VOTE' });
+    expect(s.voting?.candidates).not.toContain(HOST);
+    expect(tryAct(s, HOST, { type: 'VOTE', target: s.spy })).toBe(PoetsError.NotAPlayer);
+    s = voteAll(s, (p) => (p === s.spy ? (villagers(s)[0] as PlayerId) : s.spy));
+    expect(s.result?.reason).toBe('caught');
+    expect(s.result?.winners).not.toContain(HOST);
+    const next = act(s, HOST, { type: 'NEXT_ROUND' }, T0, 9);
+    expect(next.moderator).toBe(HOST);
+    expect(next.players).not.toContain(HOST);
+  });
+
+  it('hostPlays = host เล่นด้วยเหมือนเดิม', () => {
+    const s = begin({ discussionMs: 60_000, hostPlays: true }, kids.slice(0, 6));
+    expect(s.players).toContain(HOST);
+    expect(s.moderator).toBeNull();
+    expect(poets.playerView(s, HOST).you.role).toBe('poet');
+  });
+});

@@ -46,6 +46,7 @@ export const th = {
     share: 'ชวนเพื่อน',
     shareText: (game: string) => `มาเล่น ${game} กัน!`,
     players: (n: number, max: number) => `ผู้เล่น ${n}/${max}`,
+    moderator: 'ผู้ดำเนินเกม',
     host: 'host',
     you: 'คุณ',
     offline: 'ออฟไลน์',

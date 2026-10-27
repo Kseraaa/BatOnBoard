@@ -19,6 +19,7 @@ function readOptions(raw: unknown): PoetsOptions {
     discussionMs: o.discussionMs ?? DEFAULT_DISCUSSION_MS,
     ...(o.rounds !== undefined && { rounds: o.rounds }),
     ...(o.hideFigure !== undefined && { hideFigure: o.hideFigure }),
+    ...(o.hostPlays !== undefined && { hostPlays: o.hostPlays }),
   };
 }
 
@@ -38,6 +39,19 @@ export function PoetsSettings({ options, locale, editable, onChange }: GameSetti
 
   return (
     <div className="space-y-5">
+      <Choices
+        label={m.host}
+        hint={m.hostHint}
+        editable={editable}
+        columns={2}
+        testId="host-plays"
+        choices={[false, true].map((plays) => ({
+          key: String(plays),
+          label: plays ? m.hostPlays : m.hostModerates,
+          selected: plays === (current.hostPlays ?? false),
+          pick: () => update({ hostPlays: plays }),
+        }))}
+      />
       <Choices
         label={m.discussion}
         editable={editable}

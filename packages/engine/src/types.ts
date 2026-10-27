@@ -16,6 +16,12 @@ export interface ActionContext {
   hostId: PlayerId;
 }
 
+/** ข้อมูลระดับห้องตอนเริ่มเกม */
+export interface SetupContext {
+  /** host ที่ไม่ได้ร่วมเล่นแต่ดำเนินเกม (ดู `hostModerates`) — null = host เล่นด้วย */
+  moderator: PlayerId | null;
+}
+
 /**
  * สัญญาที่ทุกเกมต้องทำตาม โค้ดใน implementation ต้องบริสุทธิ์:
  * ห้ามใช้ Math.random / Date.now ให้ใช้ rng และ now ที่ถูกส่งเข้ามา
@@ -31,7 +37,8 @@ export interface GameDefinition<State, Action, View, Options = unknown> {
   /** ตรวจตั้งค่าห้องจาก client (กฎข้อ 5: ห้ามเชื่อ input จาก client) */
   optionsSchema: ZodType<Options>;
   defaultOptions: Options;
-  setup(players: PlayerId[], options: Options, rng: Rng, now: number): State;
+  /** `players` ไม่รวม host เมื่อ `hostModerates` เป็นจริง (host อยู่ใน `ctx.moderator` แทน) */
+  setup(players: PlayerId[], options: Options, rng: Rng, now: number, ctx?: SetupContext): State;
   validate(state: State, action: Action, by: PlayerId, ctx: ActionContext): string | null;
   apply(state: State, action: Action, by: PlayerId, now: number, rng: Rng): State;
   /** ตัดข้อมูลลับออก ผลลัพธ์ต้อง serialize เป็น JSON ได้ */
@@ -42,6 +49,12 @@ export interface GameDefinition<State, Action, View, Options = unknown> {
   /** ผู้เล่นถูกเตะหรือออกกลางเกม */
   onPlayerLeave?(state: State, player: PlayerId, now: number): State;
   isOver(state: State): boolean;
+  /**
+   * true = host ไม่ร่วมเล่น เป็นผู้ดำเนินเกม (เช่น ครูที่ขึ้นจอให้นักเรียนเล่น)
+   * ห้องจึงรับคนได้ maxPlayers + 1 และนับจำนวนผู้เล่นโดยไม่รวม host
+   * เกมเป็นคนตัดสินว่า host เห็นอะไรผ่าน playerView และทำ action ไหนได้ผ่าน validate
+   */
+  hostModerates?(options: Options): boolean;
   /**
    * บอททดสอบ: เลือก action ถัดไปจาก view ของบอทเอง (เห็นเท่าผู้เล่นคนหนึ่ง โกงไม่ได้)
    * คืน null = ยังไม่ทำอะไร · ไม่มี method นี้ = เกมนี้เพิ่มบอทไม่ได้

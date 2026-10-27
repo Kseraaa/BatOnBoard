@@ -58,6 +58,11 @@ export interface GameClient {
    * `wide` = ขยายตามจอ (เช่น เกมกระดานที่อยากให้แท็บเล็ต/คอมเห็นโต๊ะใหญ่ขึ้น)
    */
   layout?: 'narrow' | 'wide';
+  /**
+   * ตรงกับ `GameDefinition.hostModerates`: true = host ไม่ร่วมเล่น (ล็อบบี้นับผู้เล่นโดยไม่รวม host)
+   * server ตัดสินจริงเสมอ ฟังก์ชันนี้มีไว้แสดงจำนวนในล็อบบี้ให้ตรงเท่านั้น
+   */
+  hostModerates?(options: unknown): boolean;
   Screen: ComponentType<GameScreenProps>;
   Settings?: ComponentType<GameSettingsProps>;
 }

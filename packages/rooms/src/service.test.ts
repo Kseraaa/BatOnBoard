@@ -2,7 +2,7 @@ import { GUESS_MS } from '@batonboard/spyfall/rules';
 import type { SpyfallView } from '@batonboard/spyfall/rules';
 import { describe, expect, it } from 'vitest';
 import { HOST_GRACE_MS, OFFLINE_AFTER_MS, ROOM_TTL_SECONDS } from './room';
-import { createTestService, must, roomWith } from './testing';
+import { createTestService, MODERATED_GAME, must, roomWith } from './testing';
 
 const view = (snap: { view: unknown }) => snap.view as SpyfallView;
 
@@ -64,6 +64,20 @@ describe('สร้างและเข้าห้อง', () => {
       ok: false,
       error: 'name-taken',
     });
+  });
+
+  it('เกมที่ host ดำเนินเกม: รับคนเพิ่ม 1 ที่ และ host ไม่ได้ไพ่', async () => {
+    const { service } = createTestService();
+    const host = must(await service.create({ name: 'Teacher', gameId: MODERATED_GAME }));
+    for (let i = 1; i <= 8; i++) must(await service.join(host.code, { name: `Kid ${i}` }));
+    expect(await service.join(host.code, { name: 'Kid 9' })).toEqual({
+      ok: false,
+      error: 'room-full',
+    });
+    must(await service.start(host.code, host.token));
+    const snap = must(await service.poll(host.code, host.token, null));
+    expect((snap?.view as SpyfallView).you.role).toBe('spectator');
+    expect((snap?.view as SpyfallView).players).toHaveLength(8);
   });
 
   it('snapshot ไม่มี token หรือ hash ของใคร', async () => {

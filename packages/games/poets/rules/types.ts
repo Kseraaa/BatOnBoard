@@ -40,6 +40,8 @@ export interface PoetsOptions {
   rounds?: number;
   /** ซ่อนชื่อโวหารบนการ์ด (เห็นแค่ประโยค) — ยากขึ้น ต้องดูเองว่าเป็นโวหารอะไร */
   hideFigure?: boolean;
+  /** host ร่วมเล่นด้วย — ไม่ใส่/false = host เป็นผู้ดำเนินเกม (ครู) ไม่ได้ไพ่ แต่เห็นไพ่ทุกคน */
+  hostPlays?: boolean;
 }
 
 export type WinReason =
@@ -92,6 +94,8 @@ export interface PoetsState {
   rounds: number | null;
   /** ประโยคที่ใช้ไปแล้วในแมตช์นี้ — รอบถัดไปเลี่ยงไม่ให้ซ้ำ (ใช้ครบแล้วเริ่มนับใหม่) */
   used: string[];
+  /** host ที่ดำเนินเกมโดยไม่เล่น — เห็นไพ่ทุกคน (ห้องเก่าไม่มี field นี้ = ไม่มี) */
+  moderator?: PlayerId | null;
 }
 
 export type PoetsAction =
@@ -113,7 +117,19 @@ export type YouView =
       /** โวหารบนการ์ดของตัวเอง — null เมื่อห้องซ่อนชื่อโวหาร */
       figure: string | null;
     }
+  | {
+      /** host ที่ดำเนินเกม — เห็นไพ่ของทุกคนและรู้ว่าใครเป็นสายลับ */
+      role: 'moderator';
+      cards: ModeratorCard[];
+    }
   | { role: 'spectator' };
+
+export interface ModeratorCard {
+  player: PlayerId;
+  text: string;
+  figure: string;
+  spy: boolean;
+}
 
 export interface PoetsView {
   phase: Phase;

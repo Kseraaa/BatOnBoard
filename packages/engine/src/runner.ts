@@ -14,21 +14,37 @@ export function startGame<S, A, V, O>(
   rawOptions: unknown,
   rng: Rng,
   now: number,
+  host?: PlayerId,
 ): Result<S> {
   if (new Set(players).size !== players.length) {
     return { ok: false, error: EngineError.DuplicatePlayers };
-  }
-  if (players.length < game.minPlayers) {
-    return { ok: false, error: EngineError.TooFewPlayers };
-  }
-  if (players.length > game.maxPlayers) {
-    return { ok: false, error: EngineError.TooManyPlayers };
   }
   const options = game.optionsSchema.safeParse(rawOptions ?? game.defaultOptions);
   if (!options.success) {
     return { ok: false, error: EngineError.InvalidOptions };
   }
-  return { ok: true, value: game.setup([...players], options.data, rng, now) };
+  const moderator =
+    host !== undefined && players.includes(host) && game.hostModerates?.(options.data) === true
+      ? host
+      : null;
+  const playing = players.filter((p) => p !== moderator);
+  if (playing.length < game.minPlayers) {
+    return { ok: false, error: EngineError.TooFewPlayers };
+  }
+  if (playing.length > game.maxPlayers) {
+    return { ok: false, error: EngineError.TooManyPlayers };
+  }
+  return { ok: true, value: game.setup(playing, options.data, rng, now, { moderator }) };
+}
+
+/** จำนวนคนในห้องสูงสุด — host ที่ดำเนินเกม (`hostModerates`) ได้ที่นั่งเพิ่มอีก 1 */
+export function roomCapacity<S, A, V, O>(
+  game: GameDefinition<S, A, V, O>,
+  rawOptions: unknown,
+): number {
+  const options = game.optionsSchema.safeParse(rawOptions ?? game.defaultOptions);
+  const moderated = options.success && game.hostModerates?.(options.data) === true;
+  return game.maxPlayers + (moderated ? 1 : 0);
 }
 
 /** 'game:action' → actionSchema.parse → validate → apply */

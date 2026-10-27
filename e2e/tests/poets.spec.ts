@@ -12,12 +12,20 @@ test.afterEach(async () => {
   players = [];
 });
 
-async function startPoets(browser: Browser) {
+/** host (ครู) สร้างห้อง นักเรียนเข้าผ่านลิงก์ — ค่าเริ่มต้น host ดำเนินเกม ไม่ได้เล่น */
+async function startPoets(browser: Browser, hostPlays = false) {
   const [hostName, ...others] = NAMES as [string, ...string[]];
   const { host, code } = await createRoom(browser, hostName, 'poets');
   const list = [host];
   for (const name of others) list.push(await joinRoom(browser, code, name));
-  await expect(host.page.getByText(t.room.players(NAMES.length, 6))).toBeVisible();
+  if (hostPlays) {
+    await host.page
+      .getByTestId('host-plays')
+      .getByRole('radio', { name: m.settings.hostPlays, exact: true })
+      .click();
+  }
+  const playing = hostPlays ? NAMES.length : NAMES.length - 1;
+  await expect(host.page.getByText(t.room.players(playing, 6))).toBeVisible();
   await host.page.getByRole('button', { name: t.room.start, exact: true }).click();
   for (const p of list) await expect(p.page.locator('[data-phase="reading"]')).toBeVisible();
   return list;
@@ -36,7 +44,7 @@ async function readCard(page: Page) {
 
 /** แยกกวีสายลับ (โวหารไม่เหมือนใคร) กับกวีในหมู่บ้าน */
 async function sides(list: Player[]) {
-  const cards = [];
+  const cards: ({ player: Player } & Awaited<ReturnType<typeof readCard>>)[] = [];
   for (const p of list) cards.push({ player: p, ...(await readCard(p.page)) });
   const spy = cards.find((c) => cards.filter((o) => o.figure === c.figure).length === 1);
   if (!spy) throw new Error('no unique figure');
@@ -49,38 +57,43 @@ async function readingOrder(page: Page, list: Player[]): Promise<Player[]> {
   return rows.map((row) => list.find((p) => row.includes(p.name)) as Player);
 }
 
-test('4 คน: แจกประโยค → อ่านตามลำดับ → โหวตถูก → หมู่บ้านปลอดภัย', async ({ browser }) => {
+test('host ดำเนินเกม: เห็นไพ่ทุกคน → นักเรียนอ่าน → โหวตถูก → หมู่บ้านปลอดภัย', async ({
+  browser,
+}) => {
   players = await startPoets(browser);
-  const { spy, villagers, cards } = await sides(players);
-  expect(villagers).toHaveLength(3);
+  const [host, ...kids] = players as [Player, ...Player[]];
+  const { spy, villagers, cards } = await sides(kids);
   expect(new Set(villagers.map((v) => v.figure)).size).toBe(1);
-  expect(new Set(cards.map((c) => c.line)).size).toBe(4);
 
-  // ทุกคนเห็นลำดับเดียวกัน และกดอ่านจบได้เฉพาะคนที่ถึงตา
-  const order = await readingOrder(players[0]?.page as Page, players);
-  for (const reader of order) {
-    const done = reader.page.getByRole('button', { name: m.reading.done, exact: true });
-    await expect(done).toBeVisible();
-    for (const p of players) {
-      if (p !== reader) {
-        await expect(p.page.getByRole('button', { name: m.reading.done, exact: true })).toHaveCount(
-          0,
-        );
-      }
+  // host ไม่ได้ไพ่ แต่เปิดดูไพ่ทุกคนได้ และรู้ว่าใครเป็นสายลับ
+  await expect(host.page.getByTestId('poet-card')).toHaveCount(0);
+  const panel = host.page.getByTestId('moderator-panel');
+  await expect(panel.getByTestId('moderator-card')).toHaveCount(0);
+  await panel.getByRole('button', { name: m.moderator.show, exact: true }).click();
+  await expect(panel.getByTestId('moderator-card')).toHaveCount(kids.length);
+  for (const c of cards) await expect(panel).toContainText(c.line);
+  await expect(panel.locator('[data-spy="true"]')).toContainText(spy.player.name);
+
+  // อ่านตามลำดับ: คนที่ถึงตากดเอง หรือ host กด "… อ่านจบแล้ว" ให้
+  const order = await readingOrder(host.page, kids);
+  for (const [i, reader] of order.entries()) {
+    if (i === 0) {
+      await host.page
+        .getByRole('button', { name: m.moderator.doneFor(reader.name), exact: true })
+        .click();
+    } else {
+      await reader.page.getByRole('button', { name: m.reading.done, exact: true }).click();
     }
-    await done.click();
-    await expect(done).toHaveCount(0);
   }
 
-  // ช่วงคุย: กระดานกลอนมีประโยคของทุกคน รวมของสายลับ
   for (const p of players) {
     await expect(p.page.locator('[data-phase="discussion"]')).toBeVisible();
     await expect(p.page.getByTestId('poem-board')).toContainText(spy.line);
   }
 
-  const host = players[0]?.page as Page;
-  await host.getByRole('button', { name: m.discussion.button, exact: true }).click();
-  await host.getByRole('button', { name: m.confirm, exact: true }).click();
+  await host.page.getByRole('button', { name: m.discussion.button, exact: true }).click();
+  await host.page.getByRole('button', { name: m.confirm, exact: true }).click();
+  await expect(host.page.getByText(m.moderator.noVote)).toBeVisible();
 
   for (const c of cards) {
     const target = c === spy ? (villagers[0]?.player.name as string) : spy.player.name;
@@ -95,25 +108,30 @@ test('4 คน: แจกประโยค → อ่านตามลำด�
   for (const p of players) {
     await expect(p.page.getByTestId('reveal-winner')).toHaveText(m.reveal.safe);
     await expect(p.page.getByTestId('reveal-spy')).toHaveText(spy.player.name);
-    await expect(p.page.getByTestId('reveal-figure')).toHaveText(villagers[0]?.figure as string);
     await expect(p.page.getByTestId('reveal-spy-figure')).toHaveText(spy.figure);
   }
 });
 
-test('รีเฟรชกลางเกมเห็นประโยคเดิม และ host ข้ามคนที่ถึงตาอ่านได้', async ({ browser }) => {
+test('รีเฟรชกลางเกมเห็นประโยคเดิม', async ({ browser }) => {
   players = await startPoets(browser);
-  const guest = players[1] as Player;
-  const before = await readCard(guest.page);
-  await guest.page.reload();
-  await expect(guest.page.locator('[data-phase="reading"]')).toBeVisible();
-  expect(await readCard(guest.page)).toEqual(before);
+  const kid = players[1] as Player;
+  const before = await readCard(kid.page);
+  await kid.page.reload();
+  await expect(kid.page.locator('[data-phase="reading"]')).toBeVisible();
+  expect(await readCard(kid.page)).toEqual(before);
+});
 
+test('ตั้งให้ host เล่นด้วย: host ได้ไพ่และข้ามคนที่ถึงตาอ่านได้', async ({ browser }) => {
+  players = await startPoets(browser, true);
   const host = players[0] as Player;
+  const { cards } = await sides(players);
+  expect(cards).toHaveLength(NAMES.length);
+  await expect(host.page.getByTestId('moderator-panel')).toHaveCount(0);
+
   const [first] = await readingOrder(host.page, players);
   if (first !== host) {
     await host.page.getByRole('button', { name: m.reading.skip(first?.name ?? '') }).click();
-    // ประโยคของคนที่ถูกข้ามขึ้นกระดานให้ทุกคนเห็น
-    const line = (await readCard(first?.page as Page)).line;
-    await expect(guest.page.getByTestId('reading-panel')).toContainText(line);
+    const line = cards.find((c) => c.player === first)?.line ?? '';
+    await expect((players[1] as Player).page.getByTestId('reading-panel')).toContainText(line);
   }
 });
