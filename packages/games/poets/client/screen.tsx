@@ -20,6 +20,7 @@ import type { PoetsAction, PoetsView, VoteRound } from '../rules/types';
 import { POETS_ICON } from './icon';
 import { canVote, champions, currentReader, standings, tally, voteTargets } from './logic';
 import { poetsMessages } from './messages';
+import { BackgroundMusic } from './music';
 import type { PoetsMessages } from './messages';
 
 interface Ctx {
@@ -100,6 +101,9 @@ export function PoetsScreen(props: GameScreenProps) {
             {error}
           </p>
         )}
+
+        {/* เพลงดังจากจอ host (โปรเจกเตอร์) จอเดียว */}
+        {isHost && <BackgroundMusic view={view} m={m} />}
       </div>
     </div>
   );

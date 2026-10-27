@@ -34,6 +34,18 @@ const th = {
     spyHint: 'กวีฆาตกร 1 คนได้ชื่อหมู่บ้านต่างจากคนอื่น — อาจเป็นคุณก็ได้! ฟังคนอื่นให้ดี',
     spectator: 'คุณกำลังดูเกมรอบนี้ จะได้เล่นรอบถัดไปหลังกลับล็อบบี้',
   },
+  music: {
+    title: 'เพลงประกอบ',
+    silent: 'ช่วงนี้ไม่มีเพลง',
+    off: 'ปิดเพลง',
+    on: 'เปิดเพลง',
+    tracks: {
+      reading: 'อ่านกลอน',
+      discussion: 'ตามหาฆาตกร',
+      correct: 'จับฆาตกรได้',
+      wrong: 'จับผิดคน',
+    },
+  },
   choose: {
     title: 'หมู่บ้านของรอบนี้',
     help: 'เลือกโวหารที่จะใช้ในรอบนี้ หรือสุ่มจากหมู่บ้านที่ยังไม่ได้เล่น',
@@ -172,6 +184,18 @@ const en: PoetsMessages = {
     hidden: 'Village names are hidden this game. Work out the figure yourself.',
     spyHint: 'One killer poet got a different village — it might be you! Listen closely.',
     spectator: "You're watching this round. You'll play after returning to the lobby.",
+  },
+  music: {
+    title: 'Music',
+    silent: 'No music right now',
+    off: 'Music off',
+    on: 'Music on',
+    tracks: {
+      reading: 'Reading',
+      discussion: 'Finding the killer',
+      correct: 'Killer caught',
+      wrong: 'Wrong poet',
+    },
   },
   choose: {
     title: "This round's village",

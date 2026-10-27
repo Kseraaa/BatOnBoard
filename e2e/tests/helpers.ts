@@ -21,6 +21,8 @@ async function newPlayer(browser: Browser, name: string): Promise<Player> {
     ...devices['Pixel 7'],
     baseURL: test.info().project.use.baseURL,
   });
+  // ไม่โหลดเพลงประกอบจาก YouTube ระหว่างเทสต์ (ช้าและไม่จำเป็น)
+  await context.route(/youtube\.com|ytimg\.com|googlevideo\.com/, (route) => route.abort());
   const page = await context.newPage();
   return { name, context, page };
 }
