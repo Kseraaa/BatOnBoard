@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createRng, startGame } from '@batonboard/engine';
 import type { PlayerId } from '@batonboard/engine';
 import { createPoets } from './game';
-import { pairings } from './deal';
 import { PoetsError, VOTE_MS } from './constants';
+import type { VillageDef } from './types';
 import {
   act,
   HOST,
@@ -12,7 +12,7 @@ import {
   readAll,
   start,
   T0,
-  testFigures,
+  testVillages,
   timeUp,
   tryAct,
   villagers,
@@ -20,20 +20,26 @@ import {
   voteOut,
 } from './fixtures';
 
-const figureOf = (lineId: string) =>
-  testFigures.find((f) => f.sentences.some((s) => s.id === lineId))?.id;
+const villageOf = (lineId: string) =>
+  testVillages.find((v) => v.sentences.some((s) => s.id === lineId));
+const decoyOf = (lineId: string) =>
+  testVillages.flatMap((v) => v.decoys).find((d) => d.id === lineId);
 
 describe('แจกประโยค', () => {
-  it('สายลับ 1 คน คนอื่นได้ประโยคโวหารเดียวกันคนละประโยค สายลับได้โวหารอื่น', () => {
+  it('ฆาตกร 1 คนได้ข้อหลอก คนอื่นได้ประโยคของหมู่บ้านเดียวกันคนละประโยค', () => {
     for (let seed = 0; seed < 50; seed++) {
       const n = 3 + (seed % 4);
       const s = start(n, seed);
       expect(s.players).toContain(s.spy);
       expect(s.figure).not.toBe(s.spyFigure);
+      const village = testVillages.find((v) => v.id === s.village);
+      expect(village?.figure).toBe(s.figure);
       const villageLines = villagers(s).map((p) => s.lines[p] as string);
       expect(new Set(villageLines).size).toBe(n - 1);
-      for (const line of villageLines) expect(figureOf(line)).toBe(s.figure);
-      expect(figureOf(s.lines[s.spy] as string)).toBe(s.spyFigure);
+      for (const line of villageLines) expect(villageOf(line)).toBe(village);
+      const decoy = decoyOf(s.lines[s.spy] as string);
+      expect(village?.decoys).toContain(decoy);
+      expect(decoy?.figure).toBe(s.spyFigure);
       expect([...s.order].sort()).toEqual([...s.players].sort());
       expect(s.phase).toBe('reading');
       expect(s.deadline).toBeNull();
@@ -45,61 +51,31 @@ describe('แจกประโยค', () => {
     expect(start(5, 42)).not.toEqual(start(5, 43));
   });
 
-  it('ไม่ใช้ประโยคที่เข้าได้ทั้งสองฝั่ง', () => {
-    const tricky = createPoets({
-      setId: 'tricky',
-      figures: [
-        {
-          id: 'fig-a',
-          sentences: [
-            ...Array.from({ length: 5 }, (_, i) => ({ id: `a-${i}`, text: `a ${i}` })),
-            { id: 'a-both', text: 'a and b', also: ['fig-b'] },
-          ],
-        },
-        { id: 'fig-b', sentences: [{ id: 'b-0', text: 'b 0' }] },
-      ],
-    });
-    for (let seed = 0; seed < 30; seed++) {
-      const res = startGame(tricky, players(6), undefined, createRng(seed), T0);
-      if (!res.ok) throw new Error(res.error);
-      expect(Object.values(res.value.lines)).not.toContain('a-both');
-    }
+  it('ค่าเริ่มต้นเล่น 6 รอบ', () => {
+    expect(start(4, 1).rounds).toBe(6);
   });
 
-  it('แจกได้เฉพาะคู่โวหารที่ประโยคพอ', () => {
-    const figures = [
-      { id: 'fig-a', sentences: Array.from({ length: 5 }, (_, i) => ({ id: `a-${i}`, text: '' })) },
-      { id: 'fig-b', sentences: [{ id: 'b-0', text: '' }] },
-    ];
-    // หมู่บ้าน b มีประโยคไม่พอ → แจกได้แค่ทางเดียว
-    expect(pairings(figures, 6).map((p) => [p.figure, p.spyFigure])).toEqual([['fig-a', 'fig-b']]);
-    expect(pairings(figures, 2)).toHaveLength(2);
+  it('config ที่หมู่บ้านมีประโยคไม่พอ 6 คน หรือข้อหลอกเป็นโวหารเดียวกัน ถูกปฏิเสธ', () => {
+    const [base] = testVillages as [VillageDef];
+    const bad = (village: VillageDef) => () => createPoets({ setId: 'bad', villages: [village] });
+    expect(bad({ ...base, sentences: base.sentences.slice(0, 4) })).toThrow();
+    expect(bad({ ...base, decoys: [] })).toThrow();
+    expect(bad({ ...base, decoys: [{ id: 'd', text: 'd', figure: base.figure }] })).toThrow();
+    expect(bad(base)).not.toThrow();
   });
 
-  it('config ที่แจกให้ 6 คนไม่ได้ถูกปฏิเสธ', () => {
-    expect(() =>
-      createPoets({
-        setId: 'small',
-        figures: [
-          { id: 'x', sentences: [{ id: 'x1', text: 'x' }] },
-          { id: 'y', sentences: [{ id: 'y1', text: 'y' }] },
-        ],
-      }),
-    ).toThrow();
-  });
-
-  it('รอบใหม่ไม่ใช้ประโยคซ้ำจนกว่าจะหมด และโวหารหมู่บ้านไม่ซ้ำรอบก่อน', () => {
-    let s = start(3, 7);
-    const seen = new Set(Object.values(s.lines));
-    for (let round = 0; round < 5; round++) {
-      const before = s.figure;
+  it('เล่นครบทุกหมู่บ้านก่อนวนซ้ำ และหมู่บ้านไม่ซ้ำรอบก่อน', () => {
+    let s = start(3, 7, { discussionMs: 60_000 });
+    const seen = [s.village];
+    for (let round = 0; round < 7; round++) {
+      const before = s.village;
       s = act(voteOut(s, s.spy), HOST, { type: 'NEXT_ROUND' }, T0, round + 10);
-      expect(s.figure).not.toBe(before);
-      for (const line of Object.values(s.lines)) {
-        expect(seen.has(line)).toBe(false);
-        seen.add(line);
-      }
+      expect(s.village).not.toBe(before);
+      seen.push(s.village);
     }
+    const ids = testVillages.map((v) => v.id).sort();
+    expect([...new Set(seen.slice(0, 4))].sort()).toEqual(ids);
+    expect([...new Set(seen.slice(4, 8))].sort()).toEqual(ids);
   });
 });
 

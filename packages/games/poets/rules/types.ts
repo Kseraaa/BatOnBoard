@@ -17,20 +17,33 @@ export interface SentenceDef {
   text: string;
   /** คำอธิบายที่แสดงตอนเฉลย เช่น "เมืองย่าโม หมายถึง นครราชสีมา" */
   note?: string;
-  /** โวหารอื่นที่ประโยคนี้เข้าได้ด้วย — ไม่ใช้ประโยคนี้ในรอบที่โวหารเหล่านี้อยู่อีกฝั่ง */
+  /** โวหารอื่นที่ประโยคนี้เข้าได้ด้วย — แสดงตอนเฉลย */
   also?: string[];
 }
 
-/** โวหารหนึ่งแบบ (ทำหน้าที่เหมือน "สถานที่" ของ spyfall) ชื่อที่แสดงอยู่ใน data */
-export interface FigureDef {
+/** ข้อหลอก: ประโยคของกวีฆาตกร ใช้โวหารอื่นที่ไม่ใช่โวหารของหมู่บ้าน */
+export interface DecoyDef extends SentenceDef {
+  figure: string;
+}
+
+/**
+ * หมู่บ้านหนึ่งหมู่บ้าน = หนึ่งรอบของต้นฉบับ: ประโยคที่ถูก 5 ประโยค (โวหารของหมู่บ้าน) + ข้อหลอก
+ * ชื่อหมู่บ้านคือชื่อโวหาร (ชื่อที่แสดงอยู่ใน data) กวีฆาตกรได้ชื่อหมู่บ้านตามโวหารของข้อหลอก
+ */
+export interface VillageDef {
   id: string;
+  /** โวหารของหมู่บ้าน */
+  figure: string;
+  /** ประโยคของกวีในหมู่บ้าน — อย่างน้อย MAX_PLAYERS - 1 */
   sentences: SentenceDef[];
+  /** ข้อหลอกของกวีฆาตกร — อย่างน้อย 1 ข้อ */
+  decoys: DecoyDef[];
 }
 
 export interface PoetsConfig {
   /** id ของชุดโวหาร ส่งไปใน view ให้ client โหลดชื่อโวหารเองแบบ static */
   setId: string;
-  figures: FigureDef[];
+  villages: VillageDef[];
 }
 
 export interface PoetsOptions {
@@ -92,7 +105,9 @@ export interface PoetsState {
   scores: Record<PlayerId, number>;
   round: number;
   rounds: number | null;
-  /** ประโยคที่ใช้ไปแล้วในแมตช์นี้ — รอบถัดไปเลี่ยงไม่ให้ซ้ำ (ใช้ครบแล้วเริ่มนับใหม่) */
+  /** หมู่บ้านของรอบนี้ (ห้องเก่าไม่มี) */
+  village?: string;
+  /** หมู่บ้านที่เล่นไปแล้วในแมตช์นี้ — รอบถัดไปเลี่ยงไม่ให้ซ้ำ (ครบแล้วเริ่มนับใหม่) */
   used: string[];
   /** host ที่ดำเนินเกมโดยไม่เล่น — เห็นไพ่ทุกคน (ห้องเก่าไม่มี field นี้ = ไม่มี) */
   moderator?: PlayerId | null;

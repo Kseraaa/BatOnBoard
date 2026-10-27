@@ -4,13 +4,21 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { PlayerId } from '@batonboard/engine';
-import { act, HOST, poets, readAll, start, testFigures, villagers, voteAll } from './fixtures';
+import {
+  act,
+  HOST,
+  poets,
+  readAll,
+  start,
+  testFigureIds,
+  textOf,
+  villagers,
+  voteAll,
+} from './fixtures';
 import type { PoetsState } from './types';
 
 const json = (state: PoetsState, viewer: PlayerId) =>
   JSON.stringify(poets.playerView(state, viewer));
-const textOf = (id: string) =>
-  testFigures.flatMap((f) => f.sentences).find((s) => s.id === id)?.text ?? '';
 
 /** ทุก state ก่อน reveal: เริ่มอ่าน, อ่านไปครึ่งหนึ่ง, ช่วงคุย, ระหว่างโหวต */
 function secretStates(n: number, seed: number): PoetsState[] {
@@ -61,7 +69,7 @@ describe('playerView ไม่รั่ว', () => {
     const state = start(5, 3, { discussionMs: 60_000, hideFigure: true });
     for (const p of state.players) {
       const view = json(state, p);
-      for (const f of testFigures) expect(view).not.toContain(`"${f.id}"`);
+      for (const f of testFigureIds) expect(view).not.toContain(`"${f}"`);
     }
   });
 

@@ -12,6 +12,7 @@ import type {
 } from './types';
 import {
   DEFAULT_DISCUSSION_MS,
+  DEFAULT_MATCH_ROUNDS,
   MAX_DISCUSSION_MS,
   MAX_MATCH_ROUNDS,
   MAX_PLAYERS,
@@ -22,7 +23,7 @@ import {
   VOTE_MS,
 } from './constants';
 import { createPoetsBot } from './bot';
-import { deal, indexSentences, pairings } from './deal';
+import { deal, indexSentences } from './deal';
 import { isMatchOver } from './match';
 
 const idSchema = z.string().min(1).max(64);
@@ -41,23 +42,23 @@ const optionsSchema: z.ZodType<PoetsOptions> = z.object({
   hostPlays: z.boolean().optional(),
 });
 
-function assertValidConfig({ figures }: PoetsConfig): void {
-  if (figures.length < 2) throw new Error('poets needs at least 2 figures');
-  const ids = new Set(figures.map((f) => f.id));
-  if (ids.size !== figures.length) throw new Error('poets figure ids must be unique');
-  const sentences = figures.flatMap((f) => f.sentences);
+function assertValidConfig({ villages }: PoetsConfig): void {
+  if (villages.length === 0) throw new Error('poets needs at least 1 village');
+  if (new Set(villages.map((v) => v.id)).size !== villages.length) {
+    throw new Error('poets village ids must be unique');
+  }
+  const sentences = villages.flatMap((v) => [...v.sentences, ...v.decoys]);
   if (new Set(sentences.map((s) => s.id)).size !== sentences.length) {
     throw new Error('poets sentence ids must be unique');
   }
-  for (const f of figures) {
-    for (const s of f.sentences) {
-      if ((s.also ?? []).some((a) => a === f.id || !ids.has(a))) {
-        throw new Error(`sentence "${s.id}" has an invalid "also" figure`);
-      }
+  for (const v of villages) {
+    if (v.sentences.length < MAX_PLAYERS - 1) {
+      throw new Error(`village "${v.id}" needs ${MAX_PLAYERS - 1} sentences`);
     }
-  }
-  if (pairings(figures, MAX_PLAYERS).length === 0) {
-    throw new Error(`poets needs a figure pairing for ${MAX_PLAYERS} players`);
+    if (v.decoys.length === 0) throw new Error(`village "${v.id}" needs a decoy`);
+    if (v.decoys.some((d) => d.figure === v.figure)) {
+      throw new Error(`village "${v.id}" has a decoy with its own figure`);
+    }
   }
 }
 
@@ -76,11 +77,12 @@ function newRound(
   players: PlayerId[],
   rng: Rng,
   match: Match,
-  previousFigure: string | null,
+  previousVillage: string | null,
 ): PoetsState {
-  const dealt = deal(config, players, rng, match.used, previousFigure);
+  const dealt = deal(config, players, rng, match.used, previousVillage);
   return {
     phase: 'reading',
+    village: dealt.village,
     players,
     spy: dealt.spy,
     figure: dealt.figure,
@@ -187,7 +189,7 @@ export function createPoets(
   config: PoetsConfig,
 ): GameDefinition<PoetsState, PoetsAction, PoetsView, PoetsOptions> {
   assertValidConfig(config);
-  const sentences = indexSentences(config.figures);
+  const sentences = indexSentences(config.villages);
   const textOf = (id: string | undefined) => (id ? (sentences.get(id)?.text ?? '') : '');
 
   return {
@@ -196,7 +198,8 @@ export function createPoets(
     maxPlayers: MAX_PLAYERS,
     actionSchema,
     optionsSchema,
-    defaultOptions: { discussionMs: DEFAULT_DISCUSSION_MS },
+    // ต้นฉบับเล่น 6 รอบ (6 หมู่บ้าน)
+    defaultOptions: { discussionMs: DEFAULT_DISCUSSION_MS, rounds: DEFAULT_MATCH_ROUNDS },
     // ห้องเรียน: ครูเปิดห้องขึ้นจอ นักเรียนเล่น — host เล่นด้วยต้องเปิดเอง
     hostModerates: (options) => options.hostPlays !== true,
 
@@ -277,7 +280,7 @@ export function createPoets(
             used: fresh ? [] : state.used,
             moderator: state.moderator ?? null,
           };
-          return newRound(config, state.players, rng, match, state.figure);
+          return newRound(config, state.players, rng, match, state.village ?? null);
         }
       }
     },

@@ -68,6 +68,16 @@ export const FIGURES: readonly FigureData[] = [
   },
 ];
 
+/** ชื่อหมู่บ้านทั้ง 6 (โวหารของหมู่บ้านใน `./sentences`) — แสดงในตั้งค่าห้อง ไม่เป็นความลับ */
+export const VILLAGE_FIGURES: readonly string[] = [
+  'simile',
+  'onomatopoeia',
+  'personification',
+  'hyperbole',
+  'symbol',
+  'metonymy',
+];
+
 export function getFigure(id: string): FigureData | undefined {
   return FIGURES.find((f) => f.id === id);
 }

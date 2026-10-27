@@ -1,18 +1,38 @@
 import { createRng, dispatchAction, fireDeadline, startGame } from '@batonboard/engine';
 import type { PlayerId } from '@batonboard/engine';
 import { createPoets } from './game';
-import type { FigureDef, PoetsAction, PoetsState } from './types';
+import type { PoetsAction, PoetsState, VillageDef } from './types';
 
-/** ชุดโวหารสำหรับเทสต์ — id และข้อความไม่ซ้อนกัน เพื่อตรวจข้อมูลรั่วด้วยการค้นข้อความได้ */
-export const testFigures: FigureDef[] = ['alpha', 'beta', 'gamma', 'delta'].map((name) => ({
-  id: `fig-${name}`,
-  sentences: Array.from({ length: 5 }, (_, i) => ({
-    id: `line-${name}-${i}`,
-    text: `text of ${name} number ${i}`,
+const NAMES = ['alpha', 'beta', 'gamma', 'delta'];
+
+/** โวหารสำหรับเทสต์ */
+export const testFigureIds = NAMES.map((name) => `fig-${name}`);
+
+/**
+ * หมู่บ้านสำหรับเทสต์ — ข้อหลอกใช้โวหารของหมู่บ้านถัดไป
+ * id และข้อความไม่ซ้อนกัน เพื่อตรวจข้อมูลรั่วด้วยการค้นข้อความได้
+ */
+export const testVillages: VillageDef[] = NAMES.map((name, i) => ({
+  id: `village-${name}`,
+  figure: `fig-${name}`,
+  sentences: Array.from({ length: 5 }, (_, j) => ({
+    id: `line-${name}-${j}`,
+    text: `text of ${name} number ${j}`,
   })),
+  decoys: [
+    {
+      id: `decoy-${name}`,
+      text: `decoy line in ${name}`,
+      figure: `fig-${NAMES[(i + 1) % NAMES.length]}`,
+    },
+  ],
 }));
 
-export const poets = createPoets({ setId: 'test-set', figures: testFigures });
+/** ข้อความของประโยค (รวมข้อหลอก) */
+export const textOf = (id: string) =>
+  testVillages.flatMap((v) => [...v.sentences, ...v.decoys]).find((s) => s.id === id)?.text ?? '';
+
+export const poets = createPoets({ setId: 'test-set', villages: testVillages });
 
 export const T0 = 1_700_000_000_000;
 export const HOST = 'p-ann';

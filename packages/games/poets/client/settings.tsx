@@ -3,14 +3,14 @@
 import { cn } from '@batonboard/ui';
 import type { GameSettingsProps } from '@batonboard/ui';
 import { useEffect, useState } from 'react';
-import { FIGURES } from '../data/figures';
+import { getFigure, VILLAGE_FIGURES } from '../data/figures';
 import { DEFAULT_DISCUSSION_MS } from '../rules/constants';
 import type { PoetsOptions } from '../rules/types';
 import { poetsMessages } from './messages';
 
 /** เวลาตามหากวีสายลับ (วินาที) — server ตรวจช่วงที่ถูกต้องอีกชั้น */
 const DISCUSSION_CHOICES = [30, 60, 120, 180, 300];
-/** จำนวนรอบต่อแมตช์ — null = ไม่จำกัด (ต้นฉบับเล่น 6 รอบ) */
+/** จำนวนรอบต่อแมตช์ — null = ไม่จำกัด (ค่าเริ่มต้น 6 รอบ = หมู่บ้านละรอบ) */
 const ROUND_CHOICES = [null, 3, 6, 9, 12];
 
 function readOptions(raw: unknown): PoetsOptions {
@@ -39,6 +39,7 @@ export function PoetsSettings({ options, locale, editable, onChange }: GameSetti
 
   return (
     <div className="space-y-5">
+      <p className="text-sm leading-relaxed text-muted-foreground">{m.story}</p>
       <Choices
         label={m.host}
         hint={m.hostHint}
@@ -89,9 +90,9 @@ export function PoetsSettings({ options, locale, editable, onChange }: GameSetti
       <div className="space-y-2">
         <p className="text-sm font-semibold">{m.figures}</p>
         <ul className="flex flex-wrap gap-1.5">
-          {FIGURES.map((f) => (
-            <li key={f.id} className="rounded-full bg-muted px-2.5 py-1 text-xs">
-              {f.name[locale]}
+          {VILLAGE_FIGURES.map((id) => (
+            <li key={id} className="rounded-full bg-muted px-2.5 py-1 text-xs">
+              {getFigure(id)?.name[locale] ?? id}
             </li>
           ))}
         </ul>

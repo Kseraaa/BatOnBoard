@@ -1,18 +1,25 @@
-/** ตรวจข้อมูลจริง: ทุกโวหารมีชื่อ แจกได้ครบ 6 คน และ view ไม่รั่ว */
+/** ตรวจข้อมูลจริง: ทุกหมู่บ้านมีชื่อ แจกได้ครบ 6 คน และ view ไม่รั่ว */
 import { createRng, startGame } from '@batonboard/engine';
 import { describe, expect, it } from 'vitest';
-import { FIGURES } from './data/figures';
-import { SENTENCES } from './data/sentences';
+import { FIGURES, getFigure, VILLAGE_FIGURES } from './data/figures';
+import { VILLAGES } from './data/sentences';
 import { poets } from './index';
-import { MAX_PLAYERS, MIN_PLAYERS, pairings } from './rules';
+import { MAX_PLAYERS, MIN_PLAYERS } from './rules';
 
 const T0 = 1_700_000_000_000;
 const players = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
-const all = SENTENCES.flatMap((f) => f.sentences);
+const all = VILLAGES.flatMap((v) => [...v.sentences, ...v.decoys]);
 
-describe('ข้อมูลโวหาร', () => {
-  it('ทุกโวหารมีชื่อไทย/อังกฤษ และมีประโยค', () => {
-    expect(SENTENCES.map((f) => f.id).sort()).toEqual(FIGURES.map((f) => f.id).sort());
+describe('ข้อมูลหมู่บ้าน', () => {
+  it('6 หมู่บ้าน ประโยคถูก 5 ข้อหลอก 1 ทุกโวหารที่อ้างถึงมีชื่อไทย/อังกฤษ', () => {
+    expect(VILLAGES).toHaveLength(6);
+    expect(VILLAGES.map((v) => v.figure)).toEqual(VILLAGE_FIGURES);
+    for (const v of VILLAGES) {
+      expect(v.sentences).toHaveLength(MAX_PLAYERS - 1);
+      expect(v.decoys).toHaveLength(1);
+      const ids = [v.figure, ...v.decoys.map((d) => d.figure), ...all.flatMap((s) => s.also ?? [])];
+      for (const id of ids) expect(getFigure(id), id).toBeDefined();
+    }
     for (const f of FIGURES) {
       expect(f.name.th && f.name.en && f.hint.th && f.hint.en).toBeTruthy();
     }
@@ -27,14 +34,7 @@ describe('ข้อมูลโวหาร', () => {
     }
   });
 
-  it(`ทุกโวหารเป็นโวหารของหมู่บ้านได้ตั้งแต่ ${MIN_PLAYERS} ถึง ${MAX_PLAYERS} คน`, () => {
-    for (let n = MIN_PLAYERS; n <= MAX_PLAYERS; n++) {
-      const villages = new Set(pairings(SENTENCES, n).map((p) => p.figure));
-      expect([...villages].sort()).toEqual(FIGURES.map((f) => f.id).sort());
-    }
-  });
-
-  it('view ก่อน reveal ไม่มีข้อความประโยคที่ยังไม่อ่าน และสายลับไม่เห็นโวหารหมู่บ้าน', () => {
+  it('view ก่อน reveal ไม่มีข้อความประโยคที่ยังไม่อ่าน และฆาตกรไม่เห็นหมู่บ้านจริง', () => {
     for (let seed = 0; seed < 200; seed++) {
       const n = MIN_PLAYERS + (seed % (MAX_PLAYERS - MIN_PLAYERS + 1));
       const res = startGame(poets, players.slice(0, n), undefined, createRng(seed), T0);
