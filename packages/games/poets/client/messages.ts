@@ -15,6 +15,7 @@ export const GAME_DESCRIPTION: LocalizedText = {
 
 const th = {
   phase: {
+    choosing: 'เลือกหมู่บ้าน',
     reading: 'อ่านกลอน',
     discussion: 'ตามหากวีฆาตกร',
     voting: 'โหวต',
@@ -32,6 +33,13 @@ const th = {
     hidden: 'รอบนี้ไม่บอกชื่อหมู่บ้าน ฟังประโยคแล้วดูเองว่าเป็นโวหารอะไร',
     spyHint: 'กวีฆาตกร 1 คนได้ชื่อหมู่บ้านต่างจากคนอื่น — อาจเป็นคุณก็ได้! ฟังคนอื่นให้ดี',
     spectator: 'คุณกำลังดูเกมรอบนี้ จะได้เล่นรอบถัดไปหลังกลับล็อบบี้',
+  },
+  choose: {
+    title: 'หมู่บ้านของรอบนี้',
+    help: 'เลือกโวหารที่จะใช้ในรอบนี้ หรือสุ่มจากหมู่บ้านที่ยังไม่ได้เล่น',
+    random: 'สุ่มหมู่บ้าน',
+    played: 'เล่นแล้ว',
+    waiting: 'รอผู้ดำเนินเกมเลือกหมู่บ้านของรอบนี้…',
   },
   moderator: {
     title: 'ไพ่ของทุกคน',
@@ -138,6 +146,7 @@ const th = {
     'already-voted': 'คุณโหวตไปแล้ว',
     'not-host': 'เฉพาะ host เท่านั้น',
     'not-enough-players': 'ผู้เล่นไม่พอเล่นรอบต่อ',
+    'unknown-village': 'ไม่มีหมู่บ้านนี้',
   } satisfies Record<PoetsErrorCode, string>,
 };
 
@@ -145,6 +154,7 @@ export type PoetsMessages = typeof th;
 
 const en: PoetsMessages = {
   phase: {
+    choosing: 'Choosing village',
     reading: 'Reading',
     discussion: 'Find the killer',
     voting: 'Vote',
@@ -162,6 +172,13 @@ const en: PoetsMessages = {
     hidden: 'Village names are hidden this game. Work out the figure yourself.',
     spyHint: 'One killer poet got a different village — it might be you! Listen closely.',
     spectator: "You're watching this round. You'll play after returning to the lobby.",
+  },
+  choose: {
+    title: "This round's village",
+    help: 'Pick the figure of speech for this round, or pick at random from villages not yet played.',
+    random: 'Random village',
+    played: 'Played',
+    waiting: 'Waiting for the game runner to pick a village…',
   },
   moderator: {
     title: "Everyone's cards",
@@ -268,6 +285,7 @@ const en: PoetsMessages = {
     'already-voted': 'You already voted',
     'not-host': 'Host only',
     'not-enough-players': 'Not enough players for another round',
+    'unknown-village': 'No such village',
   },
 };
 

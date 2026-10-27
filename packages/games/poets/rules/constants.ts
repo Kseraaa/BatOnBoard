@@ -23,6 +23,7 @@ export const PoetsError = {
   AlreadyVoted: 'already-voted',
   NotHost: 'not-host',
   NotEnoughPlayers: 'not-enough-players',
+  UnknownVillage: 'unknown-village',
 } as const;
 
 export type PoetsErrorCode = (typeof PoetsError)[keyof typeof PoetsError];

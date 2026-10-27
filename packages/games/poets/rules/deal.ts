@@ -31,7 +31,8 @@ export interface Deal {
 }
 
 /**
- * แจกหนึ่งรอบ: เลือกหมู่บ้านที่ยังไม่ได้เล่นในแมตช์ (ครบแล้วเริ่มนับใหม่ แต่ไม่ซ้ำรอบก่อน)
+ * แจกหนึ่งรอบ: `chosen` = หมู่บ้านที่ host เลือก ไม่งั้นสุ่มหมู่บ้านที่ยังไม่ได้เล่นในแมตช์
+ * (ครบแล้วเริ่มนับใหม่ แต่ไม่ซ้ำรอบก่อน)
  * กวีในหมู่บ้านได้ประโยคของหมู่บ้านคนละประโยค กวีฆาตกรได้ข้อหลอก
  */
 export function deal(
@@ -40,9 +41,11 @@ export function deal(
   rng: Rng,
   used: readonly string[],
   previousVillage: string | null,
+  chosen: string | null = null,
 ): Deal {
   let played = new Set(used);
-  let pool = config.villages.filter((v) => !played.has(v.id));
+  const picked = config.villages.find((v) => v.id === chosen);
+  let pool = picked ? [picked] : config.villages.filter((v) => !played.has(v.id));
   if (pool.length === 0) {
     played = new Set();
     const fresh = config.villages.filter((v) => v.id !== previousVillage);
@@ -66,6 +69,6 @@ export function deal(
     spyFigure: decoy.figure,
     lines: dealt,
     order: rng.shuffle(players),
-    used: [...played, village.id],
+    used: [...new Set([...played, village.id])],
   };
 }

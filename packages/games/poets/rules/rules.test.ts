@@ -197,6 +197,8 @@ describe('host เป็นผู้ดำเนินเกม (ค่าเร
     if (!res.ok) throw new Error(res.error);
     return res.value;
   };
+  /** เริ่มเกมแล้ว host สุ่มหมู่บ้าน */
+  const dealt = () => act(begin(), HOST, { type: 'CHOOSE_VILLAGE', village: null });
 
   it('host ไม่ได้ไพ่ ผู้เล่น 6 + host 1', () => {
     const s = begin();
@@ -209,8 +211,44 @@ describe('host เป็นผู้ดำเนินเกม (ค่าเร
     });
   });
 
-  it('host เห็นไพ่ทุกคนและรู้ว่าใครเป็นสายลับ ผู้เล่นไม่เห็นไพ่ของ host', () => {
+  it('เริ่มรอบ host เลือกหมู่บ้านก่อน ระหว่างนั้นยังไม่มีใครได้ไพ่', () => {
     const s = begin();
+    expect(s.phase).toBe('choosing');
+    for (const p of s.players) expect(poets.playerView(s, p).you.role).toBe('spectator');
+    expect(tryAct(s, 'p-bob', { type: 'CHOOSE_VILLAGE', village: null })).toBe(PoetsError.NotHost);
+    expect(tryAct(s, HOST, { type: 'CHOOSE_VILLAGE', village: 'nope' })).toBe(
+      PoetsError.UnknownVillage,
+    );
+    expect(tryAct(s, HOST, { type: 'READ_DONE' })).toBe(PoetsError.WrongPhase);
+
+    const chosen = act(s, HOST, { type: 'CHOOSE_VILLAGE', village: 'village-gamma' });
+    expect(chosen.phase).toBe('reading');
+    expect(chosen.village).toBe('village-gamma');
+    expect(chosen.figure).toBe('fig-gamma');
+    expect(chosen.round).toBe(1);
+    const you = poets.playerView(chosen, HOST).you;
+    expect(you.role === 'moderator' && you.village).toBe('village-gamma');
+  });
+
+  it('รอบใหม่กลับมาให้เลือกอีก เลือกหมู่บ้านที่เล่นแล้วซ้ำได้ สุ่มเลี่ยงที่เล่นแล้ว', () => {
+    let s = act(begin(), HOST, { type: 'CHOOSE_VILLAGE', village: 'village-alpha' });
+    s = act(voteOut(s, s.spy), HOST, { type: 'NEXT_ROUND' });
+    expect(s.phase).toBe('choosing');
+    expect(s.round).toBe(2);
+    const view = poets.playerView(s, HOST).you;
+    expect(view.role === 'moderator' && view.played).toEqual(['village-alpha']);
+    expect(act(s, HOST, { type: 'CHOOSE_VILLAGE', village: 'village-alpha' }).village).toBe(
+      'village-alpha',
+    );
+    for (let seed = 0; seed < 20; seed++) {
+      const random = act(s, HOST, { type: 'CHOOSE_VILLAGE', village: null }, T0, seed);
+      expect(random.village).not.toBe('village-alpha');
+      expect(random.round).toBe(2);
+    }
+  });
+
+  it('host เห็นไพ่ทุกคนและรู้ว่าใครเป็นสายลับ ผู้เล่นไม่เห็นไพ่ของ host', () => {
+    const s = dealt();
     const you = poets.playerView(s, HOST).you;
     if (you.role !== 'moderator') throw new Error(you.role);
     expect(you.cards.map((c) => c.player)).toEqual(s.order);
@@ -223,7 +261,7 @@ describe('host เป็นผู้ดำเนินเกม (ค่าเร
   });
 
   it('host ข้ามคนอ่าน เริ่มโหวต และเริ่มรอบใหม่ได้ แต่โหวตไม่ได้', () => {
-    let s = begin();
+    let s = dealt();
     s = act(s, HOST, { type: 'READ_DONE' });
     expect(s.readCount).toBe(1);
     s = act(readAll(s), HOST, { type: 'START_VOTE' });
@@ -241,6 +279,7 @@ describe('host เป็นผู้ดำเนินเกม (ค่าเร
     const s = begin({ discussionMs: 60_000, hostPlays: true }, kids.slice(0, 6));
     expect(s.players).toContain(HOST);
     expect(s.moderator).toBeNull();
+    expect(s.phase).toBe('reading');
     expect(poets.playerView(s, HOST).you.role).toBe('poet');
   });
 });

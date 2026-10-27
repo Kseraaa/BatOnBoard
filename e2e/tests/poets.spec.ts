@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Browser, Page } from '@playwright/test';
 import { poetsMessages } from '../../packages/games/poets/client/messages';
+import { getFigure } from '../../packages/games/poets/data/figures';
 import { closeAll, createRoom, joinRoom, NAMES, t } from './helpers';
 import type { Player } from './helpers';
 
@@ -12,8 +13,13 @@ test.afterEach(async () => {
   players = [];
 });
 
-/** host (ครู) สร้างห้อง นักเรียนเข้าผ่านลิงก์ — ค่าเริ่มต้น host ดำเนินเกม ไม่ได้เล่น */
-async function startPoets(browser: Browser, hostPlays = false) {
+const figureName = (id: string) => getFigure(id)?.name.th ?? id;
+
+/**
+ * host (ครู) สร้างห้อง นักเรียนเข้าผ่านลิงก์ — ค่าเริ่มต้น host ดำเนินเกม ไม่ได้เล่น
+ * แล้วเลือกหมู่บ้าน `village` (id โวหาร) หรือสุ่ม
+ */
+async function startPoets(browser: Browser, hostPlays = false, village?: string) {
   const [hostName, ...others] = NAMES as [string, ...string[]];
   const { host, code } = await createRoom(browser, hostName, 'poets');
   const list = [host];
@@ -27,6 +33,16 @@ async function startPoets(browser: Browser, hostPlays = false) {
   const playing = hostPlays ? NAMES.length : NAMES.length - 1;
   await expect(host.page.getByText(t.room.players(playing, 6))).toBeVisible();
   await host.page.getByRole('button', { name: t.room.start, exact: true }).click();
+  if (!hostPlays) {
+    // ระหว่าง host เลือกหมู่บ้าน นักเรียนยังไม่ได้ไพ่
+    for (const p of list.slice(1)) await expect(p.page.getByText(m.choose.waiting)).toBeVisible();
+    const picker = host.page.getByTestId('choose-village');
+    await (
+      village
+        ? picker.getByRole('button', { name: figureName(village) })
+        : picker.getByRole('button', { name: `🎲 ${m.choose.random}`, exact: true })
+    ).click();
+  }
   for (const p of list) await expect(p.page.locator('[data-phase="reading"]')).toBeVisible();
   return list;
 }
@@ -57,13 +73,14 @@ async function readingOrder(page: Page, list: Player[]): Promise<Player[]> {
   return rows.map((row) => list.find((p) => row.includes(p.name)) as Player);
 }
 
-test('host ดำเนินเกม: เห็นไพ่ทุกคน → นักเรียนอ่าน → โหวตถูก → หมู่บ้านปลอดภัย', async ({
+test('host ดำเนินเกม: เลือกหมู่บ้าน → เห็นไพ่ทุกคน → นักเรียนอ่าน → โหวตถูก → หมู่บ้านปลอดภัย', async ({
   browser,
 }) => {
-  players = await startPoets(browser);
+  players = await startPoets(browser, false, 'personification');
   const [host, ...kids] = players as [Player, ...Player[]];
   const { spy, villagers, cards } = await sides(kids);
-  expect(new Set(villagers.map((v) => v.figure)).size).toBe(1);
+  // หมู่บ้านที่ host เลือก
+  for (const v of villagers) expect(v.figure).toBe(figureName('personification'));
 
   // host ไม่ได้ไพ่ แต่เปิดดูไพ่ทุกคนได้ และรู้ว่าใครเป็นสายลับ
   await expect(host.page.getByTestId('poet-card')).toHaveCount(0);

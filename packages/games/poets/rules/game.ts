@@ -29,6 +29,7 @@ import { isMatchOver } from './match';
 const idSchema = z.string().min(1).max(64);
 
 const actionSchema: z.ZodType<PoetsAction> = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('CHOOSE_VILLAGE'), village: idSchema.nullable() }),
   z.object({ type: z.literal('READ_DONE') }),
   z.object({ type: z.literal('START_VOTE') }),
   z.object({ type: z.literal('VOTE'), target: idSchema }),
@@ -72,14 +73,68 @@ interface Match {
   moderator: PlayerId | null;
 }
 
-function newRound(
+function matchOf(state: PoetsState, fresh = false): Match {
+  return {
+    discussionMs: state.discussionMs,
+    hideFigure: state.hideFigure,
+    scores: fresh ? {} : state.scores,
+    round: fresh ? 1 : state.round + 1,
+    rounds: state.rounds,
+    used: fresh ? [] : state.used,
+    moderator: state.moderator ?? null,
+  };
+}
+
+/** รอ host ผู้ดำเนินเกมเลือกหมู่บ้าน — ยังไม่แจกอะไร */
+function waitForChoice(players: PlayerId[], match: Match, previousVillage: string | null) {
+  return {
+    phase: 'choosing',
+    // หมู่บ้านของรอบก่อน ใช้เลี่ยงซ้ำตอนสุ่ม
+    village: previousVillage ?? undefined,
+    players,
+    spy: '',
+    figure: '',
+    spyFigure: '',
+    lines: {},
+    order: [],
+    readCount: 0,
+    discussionMs: match.discussionMs,
+    hideFigure: match.hideFigure,
+    deadline: null,
+    voting: null,
+    voteRounds: [],
+    accused: null,
+    result: null,
+    scores: Object.fromEntries(players.map((p) => [p, match.scores[p] ?? 0])),
+    round: match.round,
+    rounds: match.rounds,
+    used: match.used,
+    moderator: match.moderator,
+  } satisfies PoetsState;
+}
+
+/** host ดำเนินเกม = ให้ host เลือกหมู่บ้านก่อน ไม่งั้นสุ่มแจกเลย */
+function startRound(
   config: PoetsConfig,
   players: PlayerId[],
   rng: Rng,
   match: Match,
   previousVillage: string | null,
 ): PoetsState {
-  const dealt = deal(config, players, rng, match.used, previousVillage);
+  return match.moderator !== null
+    ? waitForChoice(players, match, previousVillage)
+    : newRound(config, players, rng, match, previousVillage);
+}
+
+function newRound(
+  config: PoetsConfig,
+  players: PlayerId[],
+  rng: Rng,
+  match: Match,
+  previousVillage: string | null,
+  chosen: string | null = null,
+): PoetsState {
+  const dealt = deal(config, players, rng, match.used, previousVillage, chosen);
   return {
     phase: 'reading',
     village: dealt.village,
@@ -213,7 +268,7 @@ export function createPoets(
         used: [],
         moderator: ctx?.moderator ?? null,
       };
-      return newRound(config, players, rng, match, null);
+      return startRound(config, players, rng, match, null);
     },
 
     validate(state, action, by, ctx) {
@@ -222,6 +277,14 @@ export function createPoets(
       if (!state.players.includes(by) && !hostOnly) return PoetsError.NotAPlayer;
 
       switch (action.type) {
+        case 'CHOOSE_VILLAGE':
+          if (state.phase !== 'choosing') return PoetsError.WrongPhase;
+          if (by !== ctx.hostId) return PoetsError.NotHost;
+          if (action.village !== null && !config.villages.some((v) => v.id === action.village)) {
+            return PoetsError.UnknownVillage;
+          }
+          if (state.players.length < MIN_PLAYERS) return PoetsError.NotEnoughPlayers;
+          return null;
         case 'READ_DONE':
           if (state.phase !== 'reading') return PoetsError.WrongPhase;
           // คนที่กำลังอ่านกดเอง หรือ host ข้ามให้ (เช่น คนนั้นหลุด)
@@ -268,20 +331,20 @@ export function createPoets(
             false,
           );
         }
-        case 'NEXT_ROUND': {
-          // จบแมตช์แล้ว = เริ่มแมตช์ใหม่ ล้างคะแนนและประโยคที่ใช้ไป
-          const fresh = isMatchOver(state);
-          const match: Match = {
-            discussionMs: state.discussionMs,
-            hideFigure: state.hideFigure,
-            scores: fresh ? {} : state.scores,
-            round: fresh ? 1 : state.round + 1,
-            rounds: state.rounds,
-            used: fresh ? [] : state.used,
-            moderator: state.moderator ?? null,
-          };
-          return newRound(config, state.players, rng, match, state.village ?? null);
+        case 'CHOOSE_VILLAGE': {
+          // matchOf เลื่อนรอบ — ช่วงเลือกหมู่บ้านยังเป็นรอบเดิม
+          const match = { ...matchOf(state), round: state.round };
+          return newRound(config, state.players, rng, match, state.village ?? null, action.village);
         }
+        case 'NEXT_ROUND':
+          // จบแมตช์แล้ว = เริ่มแมตช์ใหม่ ล้างคะแนนและหมู่บ้านที่เล่นไป
+          return startRound(
+            config,
+            state.players,
+            rng,
+            matchOf(state, isMatchOver(state)),
+            state.village ?? null,
+          );
       }
     },
 
@@ -300,6 +363,8 @@ export function createPoets(
                 figure: p === state.spy ? state.spyFigure : state.figure,
                 spy: p === state.spy,
               })),
+              village: state.phase === 'choosing' ? null : (state.village ?? null),
+              played: state.used,
             }
           : line !== undefined && state.players.includes(viewer)
             ? { role: 'poet', text: textOf(line), figure: state.hideFigure ? null : figure }
@@ -368,7 +433,7 @@ export function createPoets(
       if (!state.players.includes(player)) return state;
       const players = state.players.filter((p) => p !== player);
       const left: PoetsState = { ...state, players };
-      if (state.phase === 'reveal') return left;
+      if (state.phase === 'reveal' || state.phase === 'choosing') return left;
       if (player === state.spy) return endRound(left, 'village', players, 'spy-left');
       if (players.length < MIN_PLAYERS) return endRound(left, null, [], 'not-enough-players');
       if (state.phase === 'reading') return advanceReading(left, now);
@@ -384,6 +449,8 @@ export function createPoets(
     bot: createPoetsBot(),
 
     // reveal ยังรับ NEXT_ROUND ได้ — จบจริงเมื่อคนไม่พอเล่นรอบต่อ
-    isOver: (state) => state.phase === 'reveal' && state.players.length < MIN_PLAYERS,
+    isOver: (state) =>
+      (state.phase === 'reveal' || state.phase === 'choosing') &&
+      state.players.length < MIN_PLAYERS,
   };
 }

@@ -1,10 +1,11 @@
 import type { PlayerId } from '@batonboard/engine';
 
 /**
- * reading (อ่านกลอนออกเสียงทีละคนตามลำดับ) → discussion (คุยหากวีสายลับ จนหมดเวลาหรือ host กดเริ่มโหวต)
+ * choosing (เฉพาะเมื่อ host ดำเนินเกม: host เลือกหมู่บ้านของรอบ หรือสุ่ม)
+ * → reading (อ่านกลอนออกเสียงทีละคนตามลำดับ) → discussion (คุยหากวีสายลับ จนหมดเวลาหรือ host กดเริ่มโหวต)
  * → voting (ทุกคนโหวต, เสมอ = โหวตใหม่หนึ่งครั้ง) → reveal
  */
-export type Phase = 'reading' | 'discussion' | 'voting' | 'reveal';
+export type Phase = 'choosing' | 'reading' | 'discussion' | 'voting' | 'reveal';
 
 /**
  * ประโยคหนึ่งประโยค — ต่างจาก spyfall ตรงที่กติกาเก็บข้อความด้วย เพราะข้อความบอกโวหารได้
@@ -114,6 +115,8 @@ export interface PoetsState {
 }
 
 export type PoetsAction =
+  /** host ผู้ดำเนินเกมเลือกหมู่บ้านของรอบ (id หมู่บ้าน) null = สุ่มจากหมู่บ้านที่ยังไม่ได้เล่น */
+  | { type: 'CHOOSE_VILLAGE'; village: string | null }
   | { type: 'READ_DONE' }
   | { type: 'START_VOTE' }
   | { type: 'VOTE'; target: PlayerId }
@@ -136,6 +139,10 @@ export type YouView =
       /** host ที่ดำเนินเกม — เห็นไพ่ของทุกคนและรู้ว่าใครเป็นสายลับ */
       role: 'moderator';
       cards: ModeratorCard[];
+      /** หมู่บ้านของรอบนี้ (null = ยังไม่เลือก) */
+      village: string | null;
+      /** หมู่บ้านที่เล่นไปแล้วในแมตช์ (รวมรอบนี้) */
+      played: string[];
     }
   | { role: 'spectator' };
 

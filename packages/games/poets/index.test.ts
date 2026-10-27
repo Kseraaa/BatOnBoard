@@ -15,6 +15,8 @@ describe('ข้อมูลหมู่บ้าน', () => {
     expect(VILLAGES).toHaveLength(6);
     expect(VILLAGES.map((v) => v.figure)).toEqual(VILLAGE_FIGURES);
     for (const v of VILLAGES) {
+      // client ส่ง id ของโวหารเป็น id หมู่บ้าน (CHOOSE_VILLAGE)
+      expect(v.id).toBe(v.figure);
       expect(v.sentences).toHaveLength(MAX_PLAYERS - 1);
       expect(v.decoys).toHaveLength(1);
       const ids = [v.figure, ...v.decoys.map((d) => d.figure), ...all.flatMap((s) => s.also ?? [])];

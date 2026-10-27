@@ -15,7 +15,7 @@ import type { GameScreenProps, Locale, PlayerInfo } from '@batonboard/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { HTMLAttributes, ReactNode } from 'react';
 // เฉพาะชื่อโวหาร — ห้าม import ประโยค (../data/sentences) ฝั่ง client
-import { getFigure } from '../data/figures';
+import { getFigure, VILLAGE_FIGURES } from '../data/figures';
 import type { PoetsAction, PoetsView, VoteRound } from '../rules/types';
 import { POETS_ICON } from './icon';
 import { canVote, champions, currentReader, standings, tally, voteTargets } from './logic';
@@ -72,7 +72,15 @@ export function PoetsScreen(props: GameScreenProps) {
       <div className="relative flex flex-col gap-4">
         <Header ctx={ctx} serverOffset={props.serverOffset} />
 
-        {view.phase === 'reveal' ? (
+        {view.phase === 'choosing' ? (
+          view.you.role === 'moderator' ? (
+            <ChooseVillage ctx={ctx} />
+          ) : (
+            <Card className="text-center text-muted-foreground" data-testid="choose-waiting">
+              {m.choose.waiting}
+            </Card>
+          )
+        ) : view.phase === 'reveal' ? (
           <Reveal ctx={ctx} isHost={isHost} />
         ) : (
           <>
@@ -164,6 +172,48 @@ function Header({ ctx, serverOffset }: { ctx: Ctx; serverOffset: number }) {
         />
       )}
     </header>
+  );
+}
+
+/** host ที่ดำเนินเกมเลือกหมู่บ้าน (โวหาร) ของรอบ หรือสุ่มจากที่ยังไม่ได้เล่น */
+function ChooseVillage({ ctx }: { ctx: Ctx }) {
+  const { view, m } = ctx;
+  if (view.you.role !== 'moderator') return null;
+  const played = view.you.played;
+  return (
+    <Sheet label={m.choose.title} tone="border-primary" data-testid="choose-village">
+      <p className="mb-3 text-xs text-muted-foreground">{m.choose.help}</p>
+      <ul className="grid grid-cols-2 gap-2">
+        {VILLAGE_FIGURES.map((id) => (
+          <li key={id}>
+            <button
+              type="button"
+              disabled={ctx.busy}
+              onClick={() => void ctx.send({ type: 'CHOOSE_VILLAGE', village: id })}
+              className={cn(
+                'flex min-h-16 w-full flex-col items-start justify-center rounded-xl border border-border bg-card px-3 py-2 text-left transition-colors hover:border-primary hover:bg-primary/5 disabled:opacity-50',
+                played.includes(id) && 'opacity-60',
+              )}
+            >
+              <span className="font-semibold">{ctx.figureName(id)}</span>
+              {played.includes(id) && (
+                <span className="text-xs text-muted-foreground">✓ {m.choose.played}</span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <Button
+        block
+        size="lg"
+        variant="secondary"
+        className="mt-3"
+        disabled={ctx.busy}
+        onClick={() => void ctx.send({ type: 'CHOOSE_VILLAGE', village: null })}
+      >
+        🎲 {m.choose.random}
+      </Button>
+    </Sheet>
   );
 }
 
