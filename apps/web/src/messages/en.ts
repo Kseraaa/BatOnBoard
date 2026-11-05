@@ -90,6 +90,8 @@ export const en: Messages = {
     'player-not-found': 'Player not found',
     'cannot-kick-self': 'You cannot kick yourself',
     'bots-unsupported': 'This game has no bots yet',
+    'pick-taken': 'Someone already picked that',
+    'picks-unsupported': 'This game has nothing to pick',
     'invalid-action': 'Invalid action',
     'invalid-options': 'Invalid settings',
     'too-few-players': 'Not enough players',

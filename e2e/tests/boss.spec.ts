@@ -42,7 +42,7 @@ async function currentPlayer(): Promise<Player> {
   return found as Player;
 }
 
-/** เจ้าของเทิร์นประกาศดีล ให้ผู้ร่วมดีลคนละ 5k แล้วเสนอแผน คืนชื่อผู้ร่วมดีล */
+/** เจ้าของเทิร์นประกาศดีล ให้ผู้ร่วมดีลคนละ 1k แล้วเสนอแผน คืนชื่อผู้ร่วมดีล */
 async function declareAndPropose(boss: Player): Promise<string[]> {
   await boss.page.getByRole('button', { name: bm.turn.declare, exact: true }).click();
   for (const p of players) await expect(p.page.getByTestId('deal-panel')).toBeVisible();
@@ -89,7 +89,7 @@ test('ทอย → ประกาศดีล → เสนอแผน → �
     await expect(p.page.locator('[data-phase="turn"]')).toBeVisible();
   }
   for (const name of members) {
-    for (const p of players) await expect(await moneyOf(p.page, name)).toHaveText(bm.money.k('5'));
+    for (const p of players) await expect(await moneyOf(p.page, name)).toHaveText(bm.money.k('1'));
   }
   const bossMoney = await (await moneyOf(boss.page, boss.name)).textContent();
   expect(bossMoney).not.toBe(bm.money.k('0'));

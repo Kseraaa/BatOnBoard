@@ -72,6 +72,23 @@ describe('setup', () => {
     expect(FAMILIES.filter((f) => s.investors[f] === null)).toHaveLength(2);
   });
 
+  it('สีที่เลือกในล็อบบี้: ได้ตระกูลนั้น ที่เหลือสุ่ม ค่าซ้ำ/ผิดถูกตัดทิ้ง', () => {
+    const ps = players(4);
+    const [a, b, c, d] = ps as [string, string, string, string];
+    const picks = { [a]: 'purple', [b]: 'purple', [c]: 'pink', [d]: 'green' };
+    const res = startGame(boss, ps, undefined, createRng(3), T0, undefined, picks);
+    if (!res.ok) throw new Error(res.error);
+    const inv = res.value.investors;
+    expect(inv.purple).toBe(a);
+    expect(inv.green).toBe(d);
+    // b เลือกซ้ำกับ a และ c เลือกค่าที่ไม่มี → สุ่มให้ คนละ 1 ตระกูล อีก 2 อยู่กองกลาง
+    for (const p of ps) expect(Object.values(inv).filter((o) => o === p)).toHaveLength(1);
+    expect(Object.values(inv).filter((o) => o === null)).toHaveLength(2);
+    // ไม่มีใครเลือก = เหมือนเดิมทุกประการ
+    const plain = startGame(boss, ps, undefined, createRng(3), T0, undefined, {});
+    expect(plain.ok && plain.value).toEqual(start(4, 3));
+  });
+
   it('seed เดียวกันได้ผลเหมือนกัน', () => {
     expect(start(5, 42)).toEqual(start(5, 42));
     expect(start(5, 42)).not.toEqual(start(5, 43));

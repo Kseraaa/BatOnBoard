@@ -29,6 +29,7 @@ export type {
   GameMode,
   GameScreenProps,
   GameSettingsProps,
+  LobbyPickProps,
   Locale,
   LocalizedText,
   PlayerInfo,

@@ -20,6 +20,19 @@ export interface ActionContext {
 export interface SetupContext {
   /** host ที่ไม่ได้ร่วมเล่นแต่ดำเนินเกม (ดู `hostModerates`) — null = host เล่นด้วย */
   moderator: PlayerId | null;
+  /**
+   * ตัวเลือกของผู้เล่นแต่ละคนจากล็อบบี้ (ดู `lobbyPick`) ผ่าน schema แล้ว ไม่ซ้ำกันถ้า `unique`
+   * ไม่มี key = ไม่ได้เลือก (เกมสุ่มให้เอง)
+   */
+  picks?: Record<PlayerId, unknown>;
+}
+
+/** ตัวเลือกส่วนตัวในล็อบบี้ เช่น สีประจำตัว — ผู้เล่นแต่ละคนเลือกของตัวเอง */
+export interface LobbyPick {
+  /** ตรวจค่าที่ผู้เล่นส่งมา (กฎข้อ 5) */
+  schema: ZodType<unknown>;
+  /** true = ห้ามสองคนเลือกค่าเดียวกัน */
+  unique: boolean;
 }
 
 /**
@@ -55,6 +68,8 @@ export interface GameDefinition<State, Action, View, Options = unknown> {
    * เกมเป็นคนตัดสินว่า host เห็นอะไรผ่าน playerView และทำ action ไหนได้ผ่าน validate
    */
   hostModerates?(options: Options): boolean;
+  /** ผู้เล่นเลือกค่าส่วนตัวในล็อบบี้ได้ (ส่งเข้า `setup` ทาง `ctx.picks`) ไม่มี = ไม่มีให้เลือก */
+  lobbyPick?: LobbyPick;
   /**
    * บอททดสอบ: เลือก action ถัดไปจาก view ของบอทเอง (เห็นเท่าผู้เล่นคนหนึ่ง โกงไม่ได้)
    * คืน null = ยังไม่ทำอะไร · ไม่มี method นี้ = เกมนี้เพิ่มบอทไม่ได้
@@ -78,5 +93,7 @@ export const EngineError = {
   TooFewPlayers: 'too-few-players',
   TooManyPlayers: 'too-many-players',
   DuplicatePlayers: 'duplicate-players',
+  PickTaken: 'pick-taken',
+  PicksUnsupported: 'picks-unsupported',
   GameOver: 'game-over',
 } as const;

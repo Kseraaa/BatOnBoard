@@ -30,6 +30,20 @@ export interface GameScreenProps {
   platformError(code: string): string;
 }
 
+/** ตัวเลือกส่วนตัวในล็อบบี้ (ข้างชื่อผู้เล่น) เช่น สีประจำตัว */
+export interface LobbyPickProps {
+  /** ค่าที่ผู้เล่นคนนี้เลือก undefined = ยังไม่เลือก (สุ่ม) */
+  value: unknown;
+  /** ค่าที่คนอื่นเลือกไปแล้ว */
+  taken: unknown[];
+  options: unknown;
+  locale: Locale;
+  /** แก้ได้ไหม (ของตัวเอง หรือ host แก้แทนบอท) */
+  editable: boolean;
+  /** null = ไม่เลือก (สุ่ม) */
+  onChange(pick: unknown): void;
+}
+
 export interface GameSettingsProps {
   options: unknown;
   locale: Locale;
@@ -64,5 +78,7 @@ export interface GameClient {
    */
   hostModerates?(options: unknown): boolean;
   Screen: ComponentType<GameScreenProps>;
+  /** ตัวเลือกส่วนตัวในล็อบบี้ ตรงกับ `GameDefinition.lobbyPick` */
+  LobbyPick?: ComponentType<LobbyPickProps>;
   Settings?: ComponentType<GameSettingsProps>;
 }

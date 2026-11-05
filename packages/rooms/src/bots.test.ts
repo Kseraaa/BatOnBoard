@@ -123,3 +123,71 @@ describe('บอททดสอบ', () => {
     expect(end.voteRounds[0]?.ballots).not.toContain(null);
   });
 });
+
+describe('เลือกค่าส่วนตัวในล็อบบี้ (lobbyPick)', () => {
+  it('เลือกสีของตัวเอง ห้ามซ้ำ ยกเลิกได้ host เลือกแทนบอทได้ แล้วได้ตระกูลนั้นตอนเริ่มเกม', async () => {
+    const r = await bossRoom();
+    const guest = must(await r.service.join(r.code, { name: 'Bob' }));
+    must(await r.addBot('บอท 1'));
+    const players = (await r.poll()).room.players;
+    const bot = players.find((p) => p.bot)?.id ?? '';
+
+    must(await r.service.pick(r.code, r.host.token, { pick: 'red' }));
+    expect(await r.service.pick(r.code, guest.token, { pick: 'red' })).toEqual({
+      ok: false,
+      error: 'pick-taken',
+    });
+    expect(await r.service.pick(r.code, guest.token, { pick: 'pink' })).toEqual({
+      ok: false,
+      error: 'invalid-action',
+    });
+    // เลือกแทนคนอื่นได้เฉพาะ host กับบอท
+    expect(
+      await r.service.pick(r.code, guest.token, { pick: 'blue', playerId: r.host.playerId }),
+    ).toEqual({ ok: false, error: 'not-host' });
+    expect(
+      await r.service.pick(r.code, r.host.token, { pick: 'blue', playerId: guest.playerId }),
+    ).toEqual({ ok: false, error: 'not-host' });
+    must(await r.service.pick(r.code, guest.token, { pick: 'blue' }));
+    must(await r.service.pick(r.code, r.host.token, { pick: 'green', playerId: bot }));
+    // เปลี่ยนใจได้ และ null = กลับไปสุ่ม
+    must(await r.service.pick(r.code, guest.token, { pick: 'yellow' }));
+    must(await r.service.pick(r.code, guest.token, { pick: null }));
+    must(await r.service.pick(r.code, guest.token, { pick: 'blue' }));
+    expect((await r.poll()).room.picks).toEqual({
+      [r.host.playerId]: 'red',
+      [guest.playerId]: 'blue',
+      [bot]: 'green',
+    });
+
+    must(await r.service.start(r.code, r.host.token));
+    expect(await r.service.pick(r.code, guest.token, { pick: 'orange' })).toEqual({
+      ok: false,
+      error: 'not-in-lobby',
+    });
+    const view = (await r.poll()).view as BossView;
+    // 3 คนได้คนละ 2: ตระกูลที่เลือก + อีก 1 ที่สุ่ม
+    expect(view.investors.red).toBe(r.host.playerId);
+    expect(view.investors.blue).toBe(guest.playerId);
+    expect(view.investors.green).toBe(bot);
+    for (const p of [r.host.playerId, guest.playerId, bot]) {
+      expect(Object.values(view.investors).filter((o) => o === p)).toHaveLength(2);
+    }
+  });
+
+  it('ออกจากห้องแล้วสีที่เลือกว่าง เกมที่ไม่มีให้เลือกปฏิเสธ', async () => {
+    const r = await bossRoom();
+    const guest = must(await r.service.join(r.code, { name: 'Bob' }));
+    must(await r.service.pick(r.code, guest.token, { pick: 'red' }));
+    must(await r.service.leave(r.code, guest.token));
+    expect((await r.poll()).room.picks).toEqual({});
+    must(await r.service.pick(r.code, r.host.token, { pick: 'red' }));
+
+    const s = createTestService();
+    const spy = must(await s.service.create({ name: 'Ann', gameId: 'spyfall' }));
+    expect(await s.service.pick(spy.code, spy.token, { pick: 'red' })).toEqual({
+      ok: false,
+      error: 'picks-unsupported',
+    });
+  });
+});

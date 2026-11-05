@@ -42,6 +42,12 @@ export const kickSchema = z.object({ playerId: idSchema });
 /** host เพิ่มบอททดสอบ (เอาออกด้วย kick) */
 export const addBotSchema = z.object({ name: playerNameSchema });
 
+/**
+ * ตัวเลือกส่วนตัวในล็อบบี้ (ตรวจละเอียดด้วย schema ของเกม) `pick: null` = ไม่เลือก (สุ่ม)
+ * `playerId` = เลือกแทนบอท (host เท่านั้น) ไม่ใส่ = ของตัวเอง
+ */
+export const pickSchema = z.object({ pick: z.unknown(), playerId: idSchema.optional() });
+
 /** options ตรวจละเอียดอีกชั้นด้วย optionsSchema ของเกม */
 export const settingsSchema = z.object({ options: z.unknown() });
 
@@ -49,6 +55,7 @@ export type CreateRoomPayload = z.input<typeof createRoomSchema>;
 export type JoinRoomPayload = z.input<typeof joinRoomSchema>;
 export type KickPayload = z.input<typeof kickSchema>;
 export type AddBotPayload = z.input<typeof addBotSchema>;
+export type PickPayload = z.input<typeof pickSchema>;
 export type SettingsPayload = z.input<typeof settingsSchema>;
 
 // ---- server → client ----
@@ -73,6 +80,8 @@ export interface RoomStateMessage {
   players: RoomPlayer[];
   /** เกมนี้มีบอททดสอบให้เพิ่มไหม */
   botsAllowed: boolean;
+  /** ตัวเลือกส่วนตัวในล็อบบี้ของแต่ละคน (สาธารณะ) ไม่มี key = ยังไม่เลือก */
+  picks: Record<string, unknown>;
 }
 
 /**
@@ -117,6 +126,8 @@ export const api = {
   kick: (code: string) => `/api/rooms/${code}/kick`,
   /** POST AddBotPayload — host เท่านั้น ตอนอยู่ล็อบบี้ */
   bot: (code: string) => `/api/rooms/${code}/bot`,
+  /** POST PickPayload — ตอนอยู่ล็อบบี้ */
+  pick: (code: string) => `/api/rooms/${code}/pick`,
   action: (code: string) => `/api/rooms/${code}/action`,
 } as const;
 

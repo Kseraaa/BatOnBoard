@@ -58,7 +58,7 @@ describe('startGame', () => {
     const five = ['ann', 'b', 'c', 'd', 'e'];
     const res = startGame(moderated, five, undefined, createRng(1), T0, 'ann');
     expect(res.ok && res.value.players).toEqual(['b', 'c', 'd', 'e']);
-    expect(setup.mock.calls[0]?.[4]).toEqual({ moderator: 'ann' });
+    expect(setup.mock.calls[0]?.[4]).toEqual({ moderator: 'ann', picks: {} });
     expect(startGame(moderated, ['ann', 'b'], undefined, createRng(1), T0, 'ann')).toEqual({
       ok: false,
       error: EngineError.TooFewPlayers,

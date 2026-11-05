@@ -260,8 +260,8 @@ function Response({ ctx, value }: { ctx: Ctx; value: boolean | undefined }) {
   );
 }
 
-/** ปุ่ม +/− ปรับส่วนแบ่งทีละ 5 หน่วย (= 5k บนกระดานมาตรฐาน) */
-const SHARE_STEP = 5;
+/** ปุ่ม +/− ปรับส่วนแบ่งทีละ 1 หน่วย (= 1k บนกระดานมาตรฐาน) ต่อรองละเอียดได้ */
+const SHARE_STEP = 1;
 
 /** บอสเลือกแหล่งของแต่ละตระกูลและส่วนแบ่ง แล้วเสนอแผน */
 function PlanEditor({ ctx, deal, space }: { ctx: Ctx; deal: DealView; space: SpaceDef }) {
@@ -287,6 +287,12 @@ function PlanEditor({ ctx, deal, space }: { ctx: Ctx; deal: DealView; space: Spa
 
   function step(p: string, delta: number) {
     setShares({ ...shares, [p]: Math.max(0, (shares[p] ?? 0) + delta) });
+  }
+
+  /** พิมพ์จำนวนเอง (หน่วยเดียวกับปุ่ม = k) ค่าว่างหรือผิด = 0 */
+  function type(p: string, text: string) {
+    const n = Math.floor(Number(text));
+    setShares({ ...shares, [p]: Number.isFinite(n) && n > 0 ? n : 0 });
   }
 
   return (
@@ -333,9 +339,21 @@ function PlanEditor({ ctx, deal, space }: { ctx: Ctx; deal: DealView; space: Spa
                 >
                   −
                 </Button>
-                <span className="w-16 text-center font-mono text-sm font-bold" data-testid="share">
-                  {ctx.money(plan.shares[p] ?? 0)}
-                </span>
+                <label className="flex h-9 w-20 items-center rounded-lg border border-border bg-background px-1.5 focus-within:ring-2 focus-within:ring-primary">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={SHARE_STEP}
+                    value={plan.shares[p] ?? 0}
+                    onChange={(e) => type(p, e.target.value)}
+                    onFocus={(e) => e.currentTarget.select()}
+                    aria-label={m.deal.shareOf(ctx.nameOf(p))}
+                    data-testid="share"
+                    className="w-full min-w-0 bg-transparent text-right font-mono text-sm font-bold outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="pl-0.5 font-mono text-sm font-bold">k</span>
+                </label>
                 <Button
                   size="sm"
                   variant="outline"

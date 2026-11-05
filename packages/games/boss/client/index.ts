@@ -2,6 +2,7 @@ import type { GameClient } from '@batonboard/ui';
 import { MAX_PLAYERS, MIN_PLAYERS } from '../rules/constants';
 import { BOSS_ICON } from './icon';
 import { GAME_DESCRIPTION, GAME_DISPLAY_NAME } from './messages';
+import { FamilyPick } from './family-pick';
 import { BossScreen } from './screen';
 import { BossSettings } from './settings';
 
@@ -23,4 +24,5 @@ export const bossClient: GameClient = {
   icon: BOSS_ICON,
   Screen: BossScreen,
   Settings: BossSettings,
+  LobbyPick: FamilyPick,
 };

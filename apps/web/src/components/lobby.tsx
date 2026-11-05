@@ -87,7 +87,7 @@ export function Lobby({ room, me, game, onLeave }: LobbyProps) {
         <CardTitle className="mb-3 text-base">{t.room.players(playing, maxPlayers)}</CardTitle>
         <ul className="divide-y divide-border">
           {room.players.map((p) => (
-            <li key={p.id} className="flex min-h-12 items-center gap-2 py-2">
+            <li key={p.id} className="flex min-h-12 flex-wrap items-center gap-2 py-2">
               <span className="relative">
                 <PixelAvatar name={p.name} />
                 <span
@@ -106,6 +106,21 @@ export function Lobby({ room, me, game, onLeave }: LobbyProps) {
                 <Button size="sm" variant="ghost" onClick={() => setConfirmKick(p.id)}>
                   {t.room.kick}
                 </Button>
+              )}
+              {game?.LobbyPick && (
+                <div className="w-full pl-10" data-testid="lobby-pick" data-player={p.name}>
+                  <game.LobbyPick
+                    value={room.picks[p.id]}
+                    taken={Object.entries(room.picks)
+                      .filter(([id]) => id !== p.id)
+                      .map(([, v]) => v)}
+                    options={room.options}
+                    locale={locale}
+                    // ของตัวเอง หรือ host เลือกแทนบอท
+                    editable={p.id === me || (isHost && p.bot)}
+                    onChange={(pick) => void run(client.pick(pick, p.id === me ? undefined : p.id))}
+                  />
+                </div>
               )}
             </li>
           ))}

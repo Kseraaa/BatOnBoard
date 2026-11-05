@@ -228,6 +228,9 @@ export class RoomClient {
   updateSettings = (options: unknown) => this.command(api.settings, { options });
   kick = (playerId: string) => this.command(api.kick, { playerId });
   addBot = (name: string) => this.command(api.bot, { name });
+  /** null = ไม่เลือก (สุ่ม) · `playerId` = host เลือกแทนบอท */
+  pick = (pick: unknown, playerId?: string) =>
+    this.command(api.pick, playerId ? { pick, playerId } : { pick });
   action = (payload: unknown) => this.command(api.action, payload);
 }
 

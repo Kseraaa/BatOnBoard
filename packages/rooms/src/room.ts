@@ -1,5 +1,6 @@
 import {
   botAction,
+  checkPick,
   createRng,
   dispatchAction,
   EngineError,
@@ -12,6 +13,7 @@ import {
 import type { AnyGameDefinition, GameRegistry, PlayerId, Rng } from '@batonboard/engine';
 import {
   addBotSchema,
+  pickSchema,
   createRoomSchema,
   joinRoomSchema,
   kickSchema,
@@ -61,6 +63,8 @@ export interface Room {
   /** hash ของ token ที่ถูกเตะ — ใช้บอกผู้เล่นว่าโดนเตะ */
   kicked: string[];
   updatedAt: number;
+  /** ตัวเลือกส่วนตัวในล็อบบี้ (`lobbyPick` ของเกม) optional เพราะห้องเก่าไม่มี */
+  picks?: Record<PlayerId, unknown>;
 }
 
 export interface IdSource {
@@ -298,10 +302,14 @@ function removeFromRoom(
     room.status === 'playing'
       ? removePlayer(gameOf(env, room), room.state, playerId, env.now)
       : room.state;
+  const picks = Object.fromEntries(
+    Object.entries(room.picks ?? {}).filter(([p]) => p !== playerId),
+  );
   return bump(env, room, {
     players,
     hostId,
     state,
+    picks,
     kicked:
       kicked && player.bot !== true
         ? [...room.kicked, player.tokenHash].slice(-MAX_KICKED)
@@ -352,9 +360,32 @@ export function start(env: RoomEnv, room: Room, by: PlayerId): Ack<Room> {
     rngFor(room),
     env.now,
     room.hostId,
+    room.picks ?? {},
   );
   if (!res.ok) return fail(res.error);
   return ok(bump(env, room, { status: 'playing', state: res.value }));
+}
+
+/** เลือกค่าส่วนตัวในล็อบบี้ (ของตัวเอง หรือ host เลือกแทนบอท) */
+export function setPick(env: RoomEnv, room: Room, by: PlayerId, payload: unknown): Ack<Room> {
+  if (room.status !== 'lobby') return fail(RoomError.NotInLobby);
+  const parsed = pickSchema.safeParse(payload);
+  if (!parsed.success) return fail(RoomError.InvalidPayload);
+  const target = parsed.data.playerId ?? by;
+  const player = room.players.find((p) => p.id === target);
+  if (!player) return fail(RoomError.PlayerNotFound);
+  if (target !== by && !(player.bot === true && room.hostId === by)) {
+    return fail(RoomError.NotHost);
+  }
+  const game = gameOf(env, room);
+  if (!game.lobbyPick) return fail(EngineError.PicksUnsupported);
+  const rest = Object.fromEntries(Object.entries(room.picks ?? {}).filter(([p]) => p !== target));
+  if (parsed.data.pick === null || parsed.data.pick === undefined) {
+    return ok(bump(env, room, { picks: rest }));
+  }
+  const res = checkPick(game, room.picks ?? {}, target, parsed.data.pick);
+  if (!res.ok) return fail(res.error);
+  return ok(bump(env, room, { picks: { ...rest, [target]: res.value } }));
 }
 
 export function backToLobby(env: RoomEnv, room: Room, by: PlayerId): Ack<Room> {
@@ -399,6 +430,7 @@ export function snapshot(env: RoomEnv, room: Room, viewer: PlayerId): RoomSnapsh
         bot: p.bot === true,
       })),
       botsAllowed: gameOf(env, room).bot !== undefined,
+      picks: room.picks ?? {},
     },
     view: room.status === 'playing' ? gameOf(env, room).playerView(room.state, viewer) : null,
     serverNow: env.now,

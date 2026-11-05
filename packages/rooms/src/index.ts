@@ -11,6 +11,7 @@ export {
   kick,
   leave,
   OFFLINE_AFTER_MS,
+  setPick,
   ROOM_TTL_SECONDS,
   snapshot,
   start,

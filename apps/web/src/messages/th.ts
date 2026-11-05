@@ -92,6 +92,8 @@ export const th = {
     'player-not-found': 'ไม่พบผู้เล่นคนนี้',
     'cannot-kick-self': 'เตะตัวเองไม่ได้',
     'bots-unsupported': 'เกมนี้ยังไม่มีบอท',
+    'pick-taken': 'มีคนเลือกอันนี้ไปแล้ว',
+    'picks-unsupported': 'เกมนี้ไม่มีให้เลือก',
     'invalid-action': 'คำสั่งไม่ถูกต้อง',
     'invalid-options': 'ตั้งค่าไม่ถูกต้อง',
     'too-few-players': 'ผู้เล่นยังไม่พอ',

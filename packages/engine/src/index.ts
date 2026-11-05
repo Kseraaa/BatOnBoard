@@ -2,6 +2,7 @@ export type {
   ActionContext,
   AnyGameDefinition,
   GameDefinition,
+  LobbyPick,
   PlayerId,
   Result,
   Rng,
@@ -13,6 +14,7 @@ export { createRegistry } from './registry';
 export type { GameRegistry } from './registry';
 export {
   botAction,
+  checkPick,
   dispatchAction,
   fireDeadline,
   getDeadline,

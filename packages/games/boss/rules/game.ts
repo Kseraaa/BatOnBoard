@@ -117,6 +117,39 @@ function assertValidConfig({ spaces, dealValues, endFaces }: BossConfig): void {
   }
 }
 
+/**
+ * แจกนักลงทุน: คนที่เลือกสีในล็อบบี้ได้ตระกูลนั้นก่อน ที่เหลือแจกตามลำดับที่สับแล้ว
+ * (ไม่มีใครเลือก = แบบเดิมทุกประการ ผลจาก seed เดิมจึงไม่เปลี่ยน) ตระกูลที่ไม่มีใครได้อยู่กองกลาง
+ */
+function dealInvestors(
+  players: PlayerId[],
+  shuffled: Family[],
+  perPlayer: number,
+  picks: Record<PlayerId, unknown>,
+): Record<Family, PlayerId | null> {
+  const chosen = new Map<PlayerId, Family>();
+  for (const p of players) {
+    const pick = picks[p];
+    if (FAMILIES.includes(pick as Family) && ![...chosen.values()].includes(pick as Family)) {
+      chosen.set(p, pick as Family);
+    }
+  }
+  const investors = Object.fromEntries(FAMILIES.map((f) => [f, null])) as Record<
+    Family,
+    PlayerId | null
+  >;
+  const free = shuffled.filter((f) => ![...chosen.values()].includes(f));
+  for (const p of players) {
+    const mine = chosen.get(p);
+    if (mine !== undefined) investors[mine] = p;
+    for (let n = mine === undefined ? 0 : 1; n < perPlayer; n++) {
+      const f = free.shift();
+      if (f !== undefined) investors[f] = p;
+    }
+  }
+  return investors;
+}
+
 /** คนทางซ้าย (index ถัดไป) ของ `player` ใน `order` */
 function leftOf(order: PlayerId[], player: PlayerId): PlayerId {
   const i = order.indexOf(player);
@@ -378,14 +411,14 @@ export function createBoss(
     actionSchema,
     optionsSchema,
     defaultOptions: { negotiationMs: DEFAULT_NEGOTIATION_MS, length: 'full' },
+    // แต่ละคนเลือกสีตระกูลของตัวเองในล็อบบี้ได้ ห้ามซ้ำ ไม่เลือก = สุ่ม
+    lobbyPick: { schema: familySchema, unique: true },
 
-    setup(players, options, rng) {
+    setup(players, options, rng, _now, ctx) {
       const families = rng.shuffle(FAMILIES);
       // 3 คนได้นักลงทุนคนละ 2 ตระกูล นอกนั้นคนละ 1 ที่เหลืออยู่กองกลาง
       const perPlayer = players.length === MIN_PLAYERS ? 2 : 1;
-      const investors = Object.fromEntries(
-        families.map((f, i) => [f, players[Math.floor(i / perPlayer)] ?? null]),
-      ) as Record<Family, PlayerId | null>;
+      const investors = dealInvestors(players, families, perPlayer, ctx?.picks ?? {});
 
       let deck = rng.shuffle(fullDeck());
       const hands: Record<PlayerId, CardId[]> = {};

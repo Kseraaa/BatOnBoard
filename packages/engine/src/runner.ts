@@ -15,6 +15,7 @@ export function startGame<S, A, V, O>(
   rng: Rng,
   now: number,
   host?: PlayerId,
+  picks: Record<PlayerId, unknown> = {},
 ): Result<S> {
   if (new Set(players).size !== players.length) {
     return { ok: false, error: EngineError.DuplicatePlayers };
@@ -34,7 +35,57 @@ export function startGame<S, A, V, O>(
   if (playing.length > game.maxPlayers) {
     return { ok: false, error: EngineError.TooManyPlayers };
   }
-  return { ok: true, value: game.setup(playing, options.data, rng, now, { moderator }) };
+  return {
+    ok: true,
+    value: game.setup(playing, options.data, rng, now, {
+      moderator,
+      picks: validPicks(game, picks, playing),
+    }),
+  };
+}
+
+/** ตัวเลือกจากล็อบบี้ที่ยังใช้ได้: เฉพาะคนที่เล่น ผ่าน schema และไม่ซ้ำ (ถ้าเกมห้ามซ้ำ) */
+function validPicks<S, A, V, O>(
+  game: GameDefinition<S, A, V, O>,
+  picks: Record<PlayerId, unknown>,
+  playing: readonly PlayerId[],
+): Record<PlayerId, unknown> {
+  const spec = game.lobbyPick;
+  if (!spec) return {};
+  const out: Record<PlayerId, unknown> = {};
+  const seen = new Set<string>();
+  for (const p of playing) {
+    if (!(p in picks)) continue;
+    const parsed = spec.schema.safeParse(picks[p]);
+    if (!parsed.success) continue;
+    const key = JSON.stringify(parsed.data);
+    if (spec.unique && seen.has(key)) continue;
+    seen.add(key);
+    out[p] = parsed.data;
+  }
+  return out;
+}
+
+/**
+ * ผู้เล่น `player` เลือก `raw` ในล็อบบี้ → ค่าที่ผ่าน schema
+ * หรือ error: `picks-unsupported` / `invalid-action` / `pick-taken` (มีคนอื่นเลือกแล้ว)
+ */
+export function checkPick<S, A, V, O>(
+  game: GameDefinition<S, A, V, O>,
+  picks: Record<PlayerId, unknown>,
+  player: PlayerId,
+  raw: unknown,
+): Result<unknown> {
+  const spec = game.lobbyPick;
+  if (!spec) return { ok: false, error: EngineError.PicksUnsupported };
+  const parsed = spec.schema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: EngineError.InvalidAction };
+  const key = JSON.stringify(parsed.data);
+  const taken = Object.entries(picks).some(
+    ([other, value]) => other !== player && JSON.stringify(value) === key,
+  );
+  if (spec.unique && taken) return { ok: false, error: EngineError.PickTaken };
+  return { ok: true, value: parsed.data };
 }
 
 /** จำนวนคนในห้องสูงสุด — host ที่ดำเนินเกม (`hostModerates`) ได้ที่นั่งเพิ่มอีก 1 */

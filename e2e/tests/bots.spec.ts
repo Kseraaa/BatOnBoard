@@ -39,8 +39,24 @@ test('host เปิด ?bots=1 เพิ่มบอท 2 ตัว ตั้�
   await input.press('Enter');
   await expect(page.getByRole('button', { name: bm.settings.resetNames })).toBeVisible();
 
+  // เลือกสีตระกูลของตัวเองข้างชื่อ (ตระกูลที่เพิ่งตั้งชื่อ) แล้วบอทเห็นว่าสีนั้นถูกเลือกแล้ว
+  const myPick = page.locator('[data-testid="lobby-pick"][data-player="แอน"]');
+  await myPick.getByRole('radio', { name: 'แก๊งแอน', exact: true }).click();
+  await expect(myPick.getByRole('radio', { name: 'แก๊งแอน', exact: true })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  const botPick = page.locator(`[data-testid="lobby-pick"][data-player="${t.room.botName(1)}"]`);
+  await expect(
+    botPick.getByRole('radio', { name: `แก๊งแอน (${bm.settings.pickTaken})` }),
+  ).toBeDisabled();
+
   await page.getByRole('button', { name: t.room.start, exact: true }).click();
   await expect(page.locator('[data-phase]')).toBeVisible();
+  // ได้ตระกูลที่เลือกจริง
+  await expect(
+    page.locator('[data-testid="player-chip"][data-player="แอน"]').getByLabel('แก๊งแอน'),
+  ).toBeVisible();
 
   // แตะช่องบนกระดาน 2D → popup บอกตระกูลที่ใช้และเงินรวม (ช่องไหนก็ได้ ไม่ต้องรอตัวเงิน)
   const to2d = page.getByRole('button', { name: bm.board.view2d, exact: true });
