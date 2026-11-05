@@ -7,24 +7,22 @@ import { FAMILIES } from '../rules/constants';
 import type { Family } from '../rules/types';
 import { SYMBOLS } from './ctx';
 import { bossMessages } from './messages';
-import { readOptions } from './settings';
 
 /**
  * เลือกสีตระกูลของตัวเองในล็อบบี้ (ข้างชื่อผู้เล่น) ห้ามซ้ำกับคนอื่น ไม่เลือก = สุ่มตอนเริ่มเกม
  * server ตรวจซ้ำเสมอ (`lobbyPick` ของเกม)
  */
-export function FamilyPick({ value, taken, options, locale, editable, onChange }: LobbyPickProps) {
+export function FamilyPick({ value, taken, locale, editable, onChange }: LobbyPickProps) {
   const m = bossMessages[locale].settings;
   const board = getBoard(DEFAULT_BOARD_ID);
   if (!board) return null;
-  const names = readOptions(options).familyNames ?? {};
   const chosen = FAMILIES.find((f) => f === value) ?? null;
   const info = (f: Family) => {
     const base = board.families.find((x) => x.id === f);
     return {
       color: base?.color ?? '#888',
       symbol: base?.symbol ?? '',
-      name: names[f] ?? base?.name[locale] ?? f,
+      name: base?.name[locale] ?? f,
     };
   };
 

@@ -26,8 +26,7 @@ export function tableOf(deal: DealView, view: BossView): Table {
 const myTurn = (view: BossView) => view.current === view.me && view.players.includes(view.me);
 
 export const canRoll = (view: BossView) => view.phase === 'turn' && myTurn(view);
-export const canDeclare = (view: BossView) =>
-  (view.phase === 'turn' || view.phase === 'moved') && myTurn(view);
+export const canDeclare = (view: BossView) => view.phase === 'moved' && myTurn(view);
 export const canDraw = (view: BossView) => view.phase === 'moved' && myTurn(view);
 
 /** ต้องทิ้งกี่ใบ (0 = ไม่ต้องทิ้ง) */

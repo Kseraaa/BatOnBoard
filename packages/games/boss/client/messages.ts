@@ -20,7 +20,7 @@ type BrokenReason = Extract<DealOutcome, { kind: 'broken' }>['reason'];
 
 const th = {
   phase: {
-    turn: 'เลือกทอยหรือประกาศดีล',
+    turn: 'ทอยลูกเต๋า',
     moved: 'ทอยแล้ว',
     discard: 'ทิ้งไพ่',
     deal: 'กำลังเจรจาดีล',
@@ -63,7 +63,7 @@ const th = {
     roll: 'ทอยลูกเต๋า',
     declare: 'ประกาศดีลช่องนี้',
     draw: 'จั่วไพ่ 3 ใบ',
-    help: 'ทอยเพื่อเดินตัวเงิน หรือประกาศดีลที่ช่องที่ตัวเงินอยู่ตอนนี้เลย',
+    help: 'ทอยลูกเต๋าเพื่อเดินตัวเงินก่อน แล้วค่อยเลือกประกาศดีลหรือจั่วไพ่',
     movedHelp: 'ประกาศดีลช่องนี้ หรือจั่วไพ่แล้วจบเทิร์น',
     discard: (n: number) => `ไพ่เกิน 12 ใบ เลือกทิ้ง ${n} ใบ`,
     discardConfirm: (n: number) => `ทิ้ง ${n} ใบที่เลือก`,
@@ -175,7 +175,7 @@ const th = {
     title: 'วิธีเล่น',
     goal: 'เป้าหมาย: เป็นนักลงทุนที่รวยที่สุดเมื่อจบเกม',
     steps: [
-      'ตาของคุณ: ทอยลูกเต๋าเดินตัวเงิน $ (ข้ามช่องที่ปิดแล้ว) หรือประกาศดีลที่ช่องที่ตัวเงินอยู่เลยก็ได้',
+      'ตาของคุณ: ต้องทอยลูกเต๋าเดินตัวเงิน $ ก่อนเสมอ (ข้ามช่องที่ปิดแล้ว)',
       'ทอยแล้วจะประกาศดีลช่องนั้น หรือจั่วไพ่ 3 ใบแล้วจบเทิร์นก็ได้ (ถือได้ 12 ใบ เกินต้องทิ้ง)',
       'คนประกาศคือบอส ดีลต้องมีตระกูลครบตามช่อง (จุดเต็ม = ต้องมี วงแหวน = เลือกตามจำนวน) จากนักลงทุนของใครก็ได้ หรือไพ่ตระกูลที่วางบนโต๊ะ',
       'บอสเสนอแผนว่าใครได้เท่าไหร่ ทุกคนในแผนกดตกลง นับถอยหลัง 5 วินาทีแล้วปิดดีล ได้เงิน = ราคาหุ้น × จำนวนหุ้นของช่อง',
@@ -196,11 +196,6 @@ const th = {
     length: 'ความยาวเกม',
     full: 'เต็ม (10–15 ดีล)',
     short: 'สั้น (5–10 ดีล)',
-    familyNames: 'ชื่อตระกูล',
-    familyNamesHelp: 'ตั้งชื่อเองได้ เช่น ชื่อเพื่อนหรือชื่อแก๊ง ปล่อยว่าง = ใช้ชื่อเดิม',
-    familyNameLabel: (name: string) => `ชื่อตระกูล ${name}`,
-    duplicateName: 'ชื่อตระกูลซ้ำกัน',
-    resetNames: 'ใช้ชื่อเดิมทั้งหมด',
     pickTitle: 'เลือกสีตระกูลของคุณ',
     pickRandom: 'สุ่ม',
     pickTaken: 'มีคนเลือกแล้ว',
@@ -237,7 +232,7 @@ export type BossMessages = typeof th;
 
 const en: BossMessages = {
   phase: {
-    turn: 'Roll or call a deal',
+    turn: 'Roll the die',
     moved: 'Rolled',
     discard: 'Discarding',
     deal: 'Negotiating',
@@ -280,7 +275,7 @@ const en: BossMessages = {
     roll: 'Roll the die',
     declare: 'Call this deal',
     draw: 'Draw 3 cards',
-    help: 'Roll to move the marker, or call the deal where it stands now.',
+    help: 'Roll to move the marker first, then call the deal or draw cards.',
     movedHelp: 'Call this deal, or draw cards to end your turn.',
     discard: (n) => `Over 12 cards: discard ${n}`,
     discardConfirm: (n) => `Discard ${n} selected`,
@@ -391,7 +386,7 @@ const en: BossMessages = {
     title: 'How to play',
     goal: 'Goal: be the richest investor when the game ends',
     steps: [
-      'On your turn: roll to move the $ marker (closed deals are skipped), or call the deal where it stands now.',
+      'On your turn: always roll first to move the $ marker (closed deals are skipped).',
       'After rolling, call that deal or draw 3 cards to end your turn (hand limit 12; discard the extra).',
       'Whoever calls is the boss. A deal needs every family its space shows (solid dot = required, ring = pick the number shown), from anyone’s investors or clan cards on the table.',
       'The boss proposes who gets what. When everyone in the plan agrees, it closes after 5 seconds and pays share price × shares.',
@@ -412,12 +407,6 @@ const en: BossMessages = {
     length: 'Game length',
     full: 'Full (10–15 deals)',
     short: 'Short (5–10 deals)',
-    familyNames: 'Family names',
-    familyNamesHelp:
-      'Name them yourself, e.g. after friends or crews. Leave empty for the default.',
-    familyNameLabel: (name) => `Name of the ${name} family`,
-    duplicateName: 'Two families have the same name',
-    resetNames: 'Use default names',
     pickTitle: 'Pick your family color',
     pickRandom: 'Random',
     pickTaken: 'already taken',

@@ -43,8 +43,15 @@ async function currentPlayer(): Promise<Player> {
 }
 
 /** เจ้าของเทิร์นประกาศดีล ให้ผู้ร่วมดีลคนละ 1k แล้วเสนอแผน คืนชื่อผู้ร่วมดีล */
-async function declareAndPropose(boss: Player): Promise<string[]> {
+/** ต้องทอยก่อนประกาศดีลเสมอ */
+async function rollThenDeclare(boss: Player): Promise<void> {
+  const roll = boss.page.getByRole('button', { name: bm.turn.roll, exact: true });
+  if (await roll.isVisible()) await roll.click();
   await boss.page.getByRole('button', { name: bm.turn.declare, exact: true }).click();
+}
+
+async function declareAndPropose(boss: Player): Promise<string[]> {
+  await rollThenDeclare(boss);
   for (const p of players) await expect(p.page.getByTestId('deal-panel')).toBeVisible();
   const editor = boss.page.getByTestId('plan-editor');
   const plus = editor.getByRole('button', { name: /^\+ / });
@@ -117,7 +124,7 @@ test('รีเฟรชกลางดีลแล้วยังเห็น�
 test('บอสยอมแพ้ → ดีลล่ม เทิร์นไปคนถัดไป', async ({ browser }) => {
   await startBoss(browser);
   const boss = await currentPlayer();
-  await boss.page.getByRole('button', { name: bm.turn.declare, exact: true }).click();
+  await rollThenDeclare(boss);
   await boss.page.getByRole('button', { name: bm.deal.abandon, exact: true }).click();
   await boss.page.getByRole('button', { name: bm.deal.confirm, exact: true }).click();
   for (const p of players) {

@@ -259,8 +259,7 @@ function simulate(n: number, seed: number, options?: unknown): Game {
     game.now += 1_000;
     if (s.phase === 'turn') {
       game.turns++;
-      if (feasible(s, s.marker) && rng.next() < 0.5) must(game, s.current, { type: 'DECLARE' });
-      else must(game, s.current, { type: 'ROLL' });
+      must(game, s.current, { type: 'ROLL' });
     } else if (s.phase === 'moved') {
       if (feasible(s, s.marker) && rng.next() < 0.8) must(game, s.current, { type: 'DECLARE' });
       else must(game, s.current, { type: 'DRAW' });

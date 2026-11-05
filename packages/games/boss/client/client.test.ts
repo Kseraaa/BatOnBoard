@@ -25,7 +25,7 @@ const space0 = testSpaces[0] as SpaceDef;
 
 /** 4 คน ทุกตระกูลมีเจ้าของ ดันประกาศดีลช่อง 0 (red + เลือก blue/yellow) */
 function dealing(cards: Record<string, string[]> = {}): BossState {
-  let s: BossState = { ...owned(start(4, 9)), marker: 0, current: DAN };
+  let s: BossState = { ...owned(start(4, 9)), marker: 0, current: DAN, phase: 'moved' };
   for (const [p, list] of Object.entries(cards)) s = give(s, p, list);
   return act(s, DAN, { type: 'DECLARE' });
 }
@@ -51,12 +51,14 @@ describe('ปุ่มที่แสดง', () => {
     const s = start(4, 1);
     const other = s.players.find((p) => p !== s.current) as string;
     expect(canRoll(viewOf(s, s.current))).toBe(true);
-    expect(canDeclare(viewOf(s, s.current))).toBe(true);
+    // ต้องทอยก่อนเสมอ
+    expect(canDeclare(viewOf(s, s.current))).toBe(false);
     expect(canDraw(viewOf(s, s.current))).toBe(false);
     expect(canRoll(viewOf(s, other))).toBe(false);
     const moved = act(s, s.current, { type: 'ROLL' });
     expect(canRoll(viewOf(moved, s.current))).toBe(false);
     expect(canDraw(viewOf(moved, s.current))).toBe(true);
+    expect(canDeclare(viewOf(moved, s.current))).toBe(true);
     expect(canRoll(viewOf(s, 'p-spectator'))).toBe(false);
   });
 

@@ -106,31 +106,9 @@ describe('setup', () => {
       { negotiationMs: 1000, length: 'full' },
       { negotiationMs: null, length: 'medium' },
       { length: 'full' },
-      { negotiationMs: null, length: 'full', familyNames: { red: 'แก๊งส้ม', blue: 'แก๊งส้ม' } },
-      { negotiationMs: null, length: 'full', familyNames: { red: '   ' } },
-      { negotiationMs: null, length: 'full', familyNames: { red: 'x'.repeat(21) } },
-      { negotiationMs: null, length: 'full', familyNames: { pink: 'ชมพู' } },
     ]) {
       expect(startGame(boss, players(4), options, createRng(1), T0).ok).toBe(false);
     }
-  });
-
-  it('ชื่อตระกูลที่ host ตั้งเองผ่าน schema (ตัดช่องว่าง) และไม่กระทบกติกา', () => {
-    const parsed = boss.optionsSchema.parse({
-      negotiationMs: null,
-      length: 'full',
-      familyNames: { red: '  ตระกูลเอ ', green: 'Bee' },
-    });
-    expect(parsed.familyNames).toEqual({ red: 'ตระกูลเอ', green: 'Bee' });
-    const a = startGame(boss, players(4), parsed, createRng(1), T0);
-    const b = startGame(
-      boss,
-      players(4),
-      { negotiationMs: null, length: 'full' },
-      createRng(1),
-      T0,
-    );
-    expect(a.ok && b.ok && a.value).toEqual(b.ok && b.value);
   });
 
   it('config ผิดถูกปฏิเสธตอนสร้างเกม', () => {
@@ -273,8 +251,17 @@ describe('เจรจาดีล', () => {
     const done = fire(agreed(declared(owned(start(4, 5)))));
     expect(boss.playerView(done, done.current).price).toBe(testValues[1]);
     expect(
-      tryAct({ ...done, marker: done.closed[0] as number }, done.current, { type: 'DECLARE' }),
+      tryAct({ ...done, marker: done.closed[0] as number, phase: 'moved' }, done.current, {
+        type: 'DECLARE',
+      }),
     ).toBe(BossError.SpaceClosed);
+  });
+
+  it('ต้องทอยก่อนเสมอ ประกาศดีลช่องเดิมตอนต้นเทิร์นไม่ได้', () => {
+    const s = start(4, 1);
+    expect(tryAct(s, s.current, { type: 'DECLARE' })).toBe(BossError.WrongPhase);
+    const moved = act(s, s.current, { type: 'ROLL' });
+    expect(tryAct(moved, s.current, { type: 'DECLARE' })).toBeNull();
   });
 
   it('มีคนไม่ตกลง → ยกเลิกนับถอยหลัง และเสนอใหม่ต้องตอบใหม่', () => {

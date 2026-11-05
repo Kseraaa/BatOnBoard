@@ -12,7 +12,7 @@ test.afterEach(async () => {
   players = [];
 });
 
-test('host เปิด ?bots=1 เพิ่มบอท 2 ตัว ตั้งชื่อตระกูลเอง → เริ่มเกม → บอทเล่นต่อเอง', async ({
+test('host เปิด ?bots=1 เพิ่มบอท 2 ตัว เลือกสีตระกูล → เริ่มเกม → บอทเล่นต่อเอง', async ({
   browser,
 }) => {
   const { host, code } = await createRoom(browser, 'แอน', 'boss');
@@ -31,31 +31,26 @@ test('host เปิด ?bots=1 เพิ่มบอท 2 ตัว ตั้�
   await expect(page.getByText(t.room.botName(2), { exact: true })).toBeVisible();
   await expect(page.getByText(t.room.players(3, 6))).toBeVisible();
 
-  // ตั้งชื่อตระกูลแรกเอง (ส่งตอนออกจากช่อง)
+  // เลือกสีตระกูลของตัวเองข้างชื่อ แล้วบอทเห็นว่าสีนั้นถูกเลือกแล้ว
   const family = cityV1.families[0];
   if (!family) throw new Error('no family');
-  const input = page.getByLabel(bm.settings.familyNameLabel(family.name.th));
-  await input.fill('แก๊งแอน');
-  await input.press('Enter');
-  await expect(page.getByRole('button', { name: bm.settings.resetNames })).toBeVisible();
-
-  // เลือกสีตระกูลของตัวเองข้างชื่อ (ตระกูลที่เพิ่งตั้งชื่อ) แล้วบอทเห็นว่าสีนั้นถูกเลือกแล้ว
+  const familyName = family.name.th;
   const myPick = page.locator('[data-testid="lobby-pick"][data-player="แอน"]');
-  await myPick.getByRole('radio', { name: 'แก๊งแอน', exact: true }).click();
-  await expect(myPick.getByRole('radio', { name: 'แก๊งแอน', exact: true })).toHaveAttribute(
+  await myPick.getByRole('radio', { name: familyName, exact: true }).click();
+  await expect(myPick.getByRole('radio', { name: familyName, exact: true })).toHaveAttribute(
     'aria-checked',
     'true',
   );
   const botPick = page.locator(`[data-testid="lobby-pick"][data-player="${t.room.botName(1)}"]`);
   await expect(
-    botPick.getByRole('radio', { name: `แก๊งแอน (${bm.settings.pickTaken})` }),
+    botPick.getByRole('radio', { name: `${familyName} (${bm.settings.pickTaken})` }),
   ).toBeDisabled();
 
   await page.getByRole('button', { name: t.room.start, exact: true }).click();
   await expect(page.locator('[data-phase]')).toBeVisible();
   // ได้ตระกูลที่เลือกจริง
   await expect(
-    page.locator('[data-testid="player-chip"][data-player="แอน"]').getByLabel('แก๊งแอน'),
+    page.locator('[data-testid="player-chip"][data-player="แอน"]').getByLabel(familyName),
   ).toBeVisible();
 
   // แตะช่องบนกระดาน 2D → popup บอกตระกูลที่ใช้และเงินรวม (ช่องไหนก็ได้ ไม่ต้องรอตัวเงิน)
@@ -68,7 +63,7 @@ test('host เปิด ?bots=1 เพิ่มบอท 2 ตัว ตั้�
   const detail = page.getByTestId('space-detail');
   await expect(detail).toBeVisible();
   await expect(detail.getByTestId('space-total')).toHaveText(/^\d[\d,]*k$/);
-  await expect(detail.getByText('แก๊งแอน', { exact: true })).toBeVisible();
+  await expect(detail.getByText(familyName, { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(detail).toBeHidden();
 

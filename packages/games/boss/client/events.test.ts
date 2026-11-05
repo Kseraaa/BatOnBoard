@@ -50,7 +50,7 @@ describe('เหตุการณ์จาก view (เสียง/สั่�
   });
 
   it('มีคนลงไพ่ที่ยกเลิกได้ → เตือน แล้วโดนเบรก → เตือนอีกครั้ง', () => {
-    let s: BossState = { ...owned(start(4, 9)), marker: 0, current: 'p-dan' };
+    let s: BossState = { ...owned(start(4, 9)), marker: 0, current: 'p-dan', phase: 'moved' };
     s = give(give(s, 'p-cat', ['takeover-1']), 'p-bob', ['stop-1']);
     s = act(s, 'p-dan', { type: 'DECLARE' });
     const played = act(s, 'p-cat', { type: 'PLAY_TAKEOVER', card: 'takeover-1' });

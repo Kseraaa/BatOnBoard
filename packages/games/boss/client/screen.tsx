@@ -24,7 +24,6 @@ import { Hand } from './hand';
 import { HowToPlay } from './how-to-play';
 import { canDeclare, canDraw, canRoll, discardCount, kilos, ranking } from './logic';
 import { bossMessages } from './messages';
-import { readOptions } from './settings';
 import { useGameSounds } from './use-sounds';
 
 export function BossScreen(props: GameScreenProps) {
@@ -36,13 +35,7 @@ export function BossScreen(props: GameScreenProps) {
   useGameSounds(view);
   if (!board) return null;
 
-  const names = readOptions(props.options).familyNames ?? {};
-  const families = new Map<Family, FamilyInfo>(
-    board.families.map((f) => {
-      const custom = names[f.id];
-      return [f.id, custom ? { ...f, name: { th: custom, en: custom } } : f];
-    }),
-  );
+  const families = new Map<Family, FamilyInfo>(board.families.map((f) => [f.id, f]));
   const ctx: Ctx = {
     view,
     m,

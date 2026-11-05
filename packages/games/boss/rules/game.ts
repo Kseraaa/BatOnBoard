@@ -26,7 +26,6 @@ import {
   FAMILIES,
   FULL_GAME_DEALS,
   HAND_LIMIT,
-  MAX_FAMILY_NAME,
   MAX_NEGOTIATION_MS,
   MAX_PLAYERS,
   MIN_NEGOTIATION_MS,
@@ -76,13 +75,6 @@ const actionSchema: z.ZodType<BossAction> = z.discriminatedUnion('type', [
 const optionsSchema: z.ZodType<BossOptions> = z.object({
   negotiationMs: z.number().int().min(MIN_NEGOTIATION_MS).max(MAX_NEGOTIATION_MS).nullable(),
   length: z.enum(['full', 'short']),
-  familyNames: z
-    .partialRecord(familySchema, z.string().trim().min(1).max(MAX_FAMILY_NAME))
-    .refine((names) => {
-      const lower = Object.values(names).map((n) => n.toLocaleLowerCase());
-      return new Set(lower).size === lower.length;
-    })
-    .optional(),
 });
 
 function assertValidConfig({ spaces, dealValues, endFaces }: BossConfig): void {
@@ -459,7 +451,8 @@ export function createBoss(
           if (state.phase !== 'turn') return BossError.WrongPhase;
           return by === state.current ? null : BossError.NotYourTurn;
         case 'DECLARE':
-          if (state.phase !== 'turn' && state.phase !== 'moved') return BossError.WrongPhase;
+          // ต้องทอยก่อนเสมอ (กติกาบ้าน: ต้นฉบับประกาศช่องเดิมได้โดยไม่ทอย)
+          if (state.phase !== 'moved') return BossError.WrongPhase;
           if (by !== state.current) return BossError.NotYourTurn;
           return state.closed.includes(state.marker) ? BossError.SpaceClosed : null;
         case 'DRAW':

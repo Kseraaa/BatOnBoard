@@ -11,7 +11,7 @@ const [ANN, BOB, CAT, DAN] = ['p-ann', 'p-bob', 'p-cat', 'p-dan'] as const;
  * ดันประกาศดีลช่อง 0 (ต้องมี red + เลือก blue หรือ yellow) ดันจึงเป็นบอสที่ไม่ได้ถือตระกูลในดีล
  */
 function dealing(cards: Record<string, string[]> = {}): BossState {
-  let s: BossState = { ...owned(start(4, 9)), marker: 0, current: DAN };
+  let s: BossState = { ...owned(start(4, 9)), marker: 0, current: DAN, phase: 'moved' };
   for (const [p, list] of Object.entries(cards)) s = give(s, p, list);
   return act(s, DAN, { type: 'DECLARE' });
 }
@@ -82,7 +82,7 @@ describe('ไพ่ไปเที่ยว', () => {
   });
 
   it('นักลงทุนที่อยู่กองกลางหรือไปเที่ยวแล้ว ส่งไปเที่ยวไม่ได้', () => {
-    let s: BossState = { ...owned(start(4, 9)), marker: 0, current: DAN };
+    let s: BossState = { ...owned(start(4, 9)), marker: 0, current: DAN, phase: 'moved' };
     s = give({ ...s, investors: { ...s.investors, blue: null } }, CAT, ['travel-any-1']);
     s = act(s, DAN, { type: 'DECLARE' });
     expect(
@@ -246,7 +246,7 @@ describe('ไพ่ซื้อตัว', () => {
 
   it('มีนักลงทุนในกองกลาง ต้องซื้อจากกองกลาง', () => {
     // 4 คนไม่เรียก owned(): มี 2 ตระกูลอยู่กองกลาง
-    let s: BossState = { ...start(4, 9), current: DAN };
+    let s: BossState = { ...start(4, 9), current: DAN, phase: 'moved' };
     s = act(give(s, ANN, recruits), DAN, { type: 'DECLARE' });
     const pool = (['red', 'blue', 'yellow', 'purple', 'orange', 'green'] as const).filter(
       (f) => s.investors[f] === null,

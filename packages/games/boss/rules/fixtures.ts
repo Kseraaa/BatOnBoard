@@ -84,7 +84,8 @@ export function investorPlan(space: number, shares: Plan['shares'] = {}): Plan {
 
 /** ประกาศดีลที่ช่องปัจจุบันโดยเจ้าของเทิร์น */
 export function declared(state: BossState): BossState {
-  return act(state, state.current, { type: 'DECLARE' });
+  // ต้องทอยก่อนประกาศเสมอ เทสต์ข้ามการทอยด้วยการตั้ง phase เป็น moved ที่ช่องเดิม
+  return act({ ...state, phase: 'moved' }, state.current, { type: 'DECLARE' });
 }
 
 export function allCards(state: BossState): string[] {
